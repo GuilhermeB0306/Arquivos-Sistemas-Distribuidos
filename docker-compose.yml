@@ -1,0 +1,70 @@
+services:
+  # =========================================================================
+  # CONTAINER 2: Servidor de Borda (API REST + Load Balancer Round-Robin -> gRPC)
+  # =========================================================================
+  edge-server:
+    build:
+      context: ./edge-server
+      dockerfile: Dockerfile
+    container_name: edge-server
+    environment:
+      - EDGE_ID=edge-server
+      - REST_PORT=8080
+      - CENTRAL_SERVERS=central-1:50051,central-2:50052
+    ports:
+      - "8080:8080"
+    depends_on:
+      - central-1
+      - central-2
+    networks:
+      - sd_network
+
+  # =========================================================================
+  # CONTAINER 3: Servidor Central 1 (gRPC + Nó 1 do Token Ring)
+  # =========================================================================
+  central-1:
+    build:
+      context: ./central-server
+      dockerfile: Dockerfile
+    container_name: central-1
+    environment:
+      - SERVER_ID=central-1
+      - GRPC_PORT=50051
+      - NEXT_NODE_ADDRESS=central-2:50052
+      - INITIAL_TOKEN_HOLDER=true
+      - TOKEN_HOLD_TIME_SEC=2.0
+      - STORAGE_DIR=/app/storage_data
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./storage_data:/app/storage_data
+    networks:
+      - sd_network
+
+  # =========================================================================
+  # CONTAINER 4: Servidor Central 2 (gRPC + Nó 2 do Token Ring)
+  # =========================================================================
+  central-2:
+    build:
+      context: ./central-server
+      dockerfile: Dockerfile
+    container_name: central-2
+    environment:
+      - SERVER_ID=central-2
+      - GRPC_PORT=50052
+      - NEXT_NODE_ADDRESS=central-1:50051
+      - INITIAL_TOKEN_HOLDER=false
+      - TOKEN_HOLD_TIME_SEC=2.0
+      - STORAGE_DIR=/app/storage_data
+    ports:
+      - "50052:50052"
+    volumes:
+      - ./storage_data:/app/storage_data
+    networks:
+      - sd_network
+
+  # (Falta apenas o Container 1: 'client' multithread)
+
+networks:
+  sd_network:
+    driver: bridge

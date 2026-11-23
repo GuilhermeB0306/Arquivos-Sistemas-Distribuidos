@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package storage;
+
+// Serviço gRPC exposto para o Servidor de Borda (Upload, Download, Listagem)
+service FileService {
+  rpc UploadFile (UploadRequest) returns (UploadResponse);
+  rpc DownloadFile (DownloadRequest) returns (DownloadResponse);
+  rpc ListFiles (Empty) returns (FileListResponse);
+}
+
+// Serviço gRPC exposto entre os Servidores Centrais para o anel lógico (Token Ring)
+service TokenRingService {
+  rpc PassToken (TokenMessage) returns (TokenAck);
+}
+
+message Empty {}
+
+message UploadRequest {
+  string filename = 1;
+  bytes content = 2;
+  string client_id = 3;
+}
+
+message UploadResponse {
+  bool success = 1;
+  string message = 2;
+  string handled_by = 3;
+}
+
+message DownloadRequest {
+  string filename = 1;
+}
+
+message DownloadResponse {
+  bool found = 1;
+  string filename = 2;
+  bytes content = 3;
+  string handled_by = 4;
+  string message = 5;
+}
+
+message FileMetadata {
+  string filename = 1;
+  int64 size = 2;
+  string uploaded_by = 3;
+  string handled_by_server = 4;
+  string timestamp = 5;
+}
+
+message FileListResponse {
+  repeated FileMetadata files = 1;
+  string handled_by = 2;
+}
+
+message TokenMessage {
+  int64 sequence_number = 1;
+  string from_server = 2;
+}
+
+message TokenAck {
+  bool received = 1;
+}
