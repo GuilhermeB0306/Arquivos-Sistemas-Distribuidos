@@ -1,9 +1,52 @@
 [
   {
-    "filename": "Aula10_27-10_Referencial Teórico, Contribuição e Metodologia — PPI 2026 2.pptx (1).pdf",
-    "size": 210297,
-    "uploaded_by": "Guilherme",
-    "handled_by_server": "central-2",
-    "timestamp": "2026-11-23T00:15:52"
+    "filename": "relatorio_sd.txt",
+    "original_size": 60,
+    "total_parts": 2,
+    "uploaded_by": "guilherme",
+    "timestamp": "2026-11-23T01:40:41",
+    "chunks": [
+      {
+        "part_number": 1,
+        "chunk_filename": "relatorio_sd.txt.part1",
+        "server_id": "central-1",
+        "server_grpc_address": "central-1:50051",
+        "chunk_size": 30,
+        "saved_path": "storage_data/central-1/relatorio_sd.txt.part1"
+      },
+      {
+        "part_number": 2,
+        "chunk_filename": "relatorio_sd.txt.part2",
+        "server_id": "central-2",
+        "server_grpc_address": "central-2:50052",
+        "chunk_size": 30,
+        "saved_path": "storage_data/central-2/relatorio_sd.txt.part2"
+      }
+    ]
+  },
+  {
+    "filename": "Prolog (4).pdf",
+    "original_size": 81528,
+    "total_parts": 2,
+    "uploaded_by": "guilherme",
+    "timestamp": "2026-11-23T01:38:53",
+    "chunks": [
+      {
+        "part_number": 1,
+        "chunk_filename": "Prolog (4).pdf.part1",
+        "server_id": "central-1",
+        "server_grpc_address": "central-1:50051",
+        "chunk_size": 40764,
+        "saved_path": "storage_data/central-1/Prolog (4).pdf.part1"
+      },
+      {
+        "part_number": 2,
+        "chunk_filename": "Prolog (4).pdf.part2",
+        "server_id": "central-2",
+        "server_grpc_address": "central-2:50052",
+        "chunk_size": 40764,
+        "saved_path": "storage_data/central-2/Prolog (4).pdf.part2"
+      }
+    ]
   }
 ]

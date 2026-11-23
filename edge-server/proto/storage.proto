@@ -2,45 +2,92 @@ syntax = "proto3";
 
 package storage;
 
-// Serviço gRPC exposto pelos Servidores Centrais para o Servidor de Borda
+// Serviço gRPC exposto pelos Servidores Centrais e pelo Servidor de Backup
 service FileService {
-  rpc UploadFile (UploadRequest) returns (UploadResponse);
-  rpc DownloadFile (DownloadRequest) returns (DownloadResponse);
+  rpc SaveChunk (ChunkUploadRequest) returns (ChunkUploadResponse);
+  rpc ReplicateChunk (ChunkReplicationRequest) returns (ChunkReplicationResponse);
+  rpc GetChunk (ChunkDownloadRequest) returns (ChunkDownloadResponse);
+  rpc GetFileMap (FileMapRequest) returns (FileMapResponse);
   rpc ListFiles (Empty) returns (FileListResponse);
 }
 
 message Empty {}
 
-message UploadRequest {
-  string filename = 1;
-  bytes content = 2;
-  string client_id = 3;
+message ChunkUploadRequest {
+  string original_filename = 1;
+  int32 part_number = 2;
+  int32 total_parts = 3;
+  string chunk_filename = 4;
+  bytes content = 5;
+  int64 original_size = 6;
+  string client_id = 7;
 }
 
-message UploadResponse {
+message ChunkUploadResponse {
   bool success = 1;
   string message = 2;
   string handled_by = 3;
+  string chunk_path = 4;
+  string backup_path = 5;
+  bool replicated = 6;
 }
 
-message DownloadRequest {
-  string filename = 1;
+message ChunkReplicationRequest {
+  string original_filename = 1;
+  int32 part_number = 2;
+  int32 total_parts = 3;
+  string chunk_filename = 4;
+  bytes content = 5;
+  string primary_server_id = 6;
 }
 
-message DownloadResponse {
+message ChunkReplicationResponse {
+  bool success = 1;
+  string backup_server_id = 2;
+  string backup_saved_path = 3;
+  string message = 4;
+}
+
+message ChunkDownloadRequest {
+  string chunk_filename = 1;
+}
+
+message ChunkDownloadResponse {
   bool found = 1;
-  string filename = 2;
+  string chunk_filename = 2;
   bytes content = 3;
   string handled_by = 4;
   string message = 5;
 }
 
+message FileMapRequest {
+  string original_filename = 1;
+}
+
+message ChunkLocation {
+  int32 part_number = 1;
+  string chunk_filename = 2;
+  string server_id = 3;
+  string server_grpc_address = 4;
+  int64 chunk_size = 5;
+  string saved_path = 6;
+  string backup_server_address = 7;
+  string backup_saved_path = 8;
+}
+
 message FileMetadata {
   string filename = 1;
-  int64 size = 2;
-  string uploaded_by = 3;
-  string handled_by_server = 4;
+  int64 original_size = 2;
+  int32 total_parts = 3;
+  string uploaded_by = 4;
   string timestamp = 5;
+  repeated ChunkLocation chunks = 6;
+}
+
+message FileMapResponse {
+  bool found = 1;
+  FileMetadata file = 2;
+  string handled_by = 3;
 }
 
 message FileListResponse {

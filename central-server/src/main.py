@@ -5,6 +5,7 @@ import grpc
 import storage_pb2_grpc
 from src.config.settings import Config
 from src.infrastructure.storage_repository import StorageRepository
+from src.infrastructure.backup_grpc_client import BackupGrpcClient
 from src.services.token_ring_service import TokenRingService
 from src.services.file_service import FileManagementService
 from src.controllers.grpc_controllers import FileGrpcController, TokenRingGrpcController
@@ -17,12 +18,17 @@ logging.basicConfig(
 logger = logging.getLogger("Main")
 
 def serve():
-    # 1. Inicializa a camada de Infraestrutura (Repositório de Arquivos)
+    # 1. Inicializa a camada de Infraestrutura (Repositório Local + Cliente gRPC de Backup)
     repository = StorageRepository()
+    backup_client = BackupGrpcClient()
 
-    # 2. Inicializa a camada de Serviços (Token Ring + Regras de Negócio)
+    # 2. Inicializa a camada de Serviços (Token Ring + Regras de Negócio com Replicação)
     token_ring_service = TokenRingService()
-    file_service = FileManagementService(repository=repository, token_ring=token_ring_service)
+    file_service = FileManagementService(
+        repository=repository,
+        token_ring=token_ring_service,
+        backup_client=backup_client
+    )
 
     # 3. Configura o Servidor gRPC com Pool de Threads (Concorrência)
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
@@ -41,7 +47,8 @@ def serve():
     logger.info("==========================================================")
     logger.info(f"🚀 Servidor Central [{Config.SERVER_ID}] iniciado na porta gRPC {Config.GRPC_PORT}")
     logger.info(f"🔗 Próximo nó no Token Ring: {Config.NEXT_NODE_ADDRESS}")
-    logger.info(f"📂 Diretório de Storage (Região Crítica): {Config.STORAGE_DIR}")
+    logger.info(f"🛡️ Servidor de Redundância (Backup): {Config.BACKUP_SERVER_ADDRESS}")
+    logger.info(f"📂 Diretório Local de Chunks: {Config.NODE_STORAGE_DIR}")
     logger.info("==========================================================")
 
     # 4. Inicia a Thread dedicada à circulação do Token Ring
