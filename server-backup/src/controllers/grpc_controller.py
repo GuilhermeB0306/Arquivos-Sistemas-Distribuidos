@@ -24,7 +24,8 @@ class BackupGrpcController(storage_pb2_grpc.FileServiceServicer):
                 chunk_size=c.chunk_size,
                 saved_path=c.saved_path,
                 backup_server_address=c.backup_server_address,
-                backup_saved_path=c.backup_saved_path
+                backup_saved_path=c.backup_saved_path,
+                chunk_sha256=c.chunk_sha256
             )
             for c in record.chunks
         ]
@@ -34,6 +35,7 @@ class BackupGrpcController(storage_pb2_grpc.FileServiceServicer):
             total_parts=record.total_parts,
             uploaded_by=record.uploaded_by,
             timestamp=record.timestamp,
+            combined_file_sha256=record.combined_file_sha256,
             chunks=chunks_proto
         )
 

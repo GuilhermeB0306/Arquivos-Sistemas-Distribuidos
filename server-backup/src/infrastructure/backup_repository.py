@@ -35,7 +35,7 @@ class BackupRepository:
         with sqlite3.connect(Config.METADATA_DB_PATH, timeout=15.0) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT filename, original_size, total_parts, uploaded_by, timestamp FROM files WHERE filename = ?",
+                "SELECT filename, original_size, total_parts, uploaded_by, timestamp, combined_file_sha256 FROM files WHERE filename = ?",
                 (original_filename,)
             )
             row = cursor.fetchone()
@@ -44,7 +44,7 @@ class BackupRepository:
 
             cursor.execute("""
                 SELECT part_number, chunk_filename, server_id, server_grpc_address,
-                       chunk_size, saved_path, backup_server_address, backup_saved_path
+                       chunk_size, saved_path, backup_server_address, backup_saved_path, chunk_sha256
                 FROM file_chunks
                 WHERE filename = ?
                 ORDER BY part_number ASC
@@ -58,7 +58,8 @@ class BackupRepository:
                     chunk_size=c[4],
                     saved_path=c[5],
                     backup_server_address=c[6] or f"{Config.SERVER_ID}:{Config.GRPC_PORT}",
-                    backup_saved_path=c[7] or f"storage_data/{Config.SERVER_ID}/{c[1]}"
+                    backup_saved_path=c[7] or f"storage_data/{Config.SERVER_ID}/{c[1]}",
+                    chunk_sha256=c[8] or ""
                 )
                 for c in cursor.fetchall()
             ]
@@ -68,6 +69,7 @@ class BackupRepository:
                 total_parts=row[2],
                 uploaded_by=row[3],
                 timestamp=row[4],
+                combined_file_sha256=row[5] or "",
                 chunks=chunks
             )
 

@@ -8,7 +8,8 @@ from src.services.token_ring_service import TokenRingService
 class FileGrpcController(storage_pb2_grpc.FileServiceServicer):
     """
     Camada Controller (Entrada gRPC nos Servidores Centrais):
-    Atende pedidos de gravação/leitura de fatias (Chunks) e consultas ao Banco de Metadados.
+    Atende chamadas de cálculo distribuído de Hash SHA-256 nos workers,
+    gravação/leitura de fatias (Chunks) e consultas ao Banco de Metadados.
     """
     def __init__(self, file_service: FileManagementService):
         self.file_service = file_service
@@ -24,7 +25,8 @@ class FileGrpcController(storage_pb2_grpc.FileServiceServicer):
                 chunk_size=c.chunk_size,
                 saved_path=c.saved_path,
                 backup_server_address=c.backup_server_address,
-                backup_saved_path=c.backup_saved_path
+                backup_saved_path=c.backup_saved_path,
+                chunk_sha256=c.chunk_sha256
             )
             for c in record.chunks
         ]
@@ -34,7 +36,21 @@ class FileGrpcController(storage_pb2_grpc.FileServiceServicer):
             total_parts=record.total_parts,
             uploaded_by=record.uploaded_by,
             timestamp=record.timestamp,
+            combined_file_sha256=record.combined_file_sha256,
             chunks=chunks_proto
+        )
+
+    def ComputeChunkHash(self, request, context):
+        res = self.file_service.compute_chunk_sha256(
+            part_number=request.part_number,
+            chunk_filename=request.chunk_filename,
+            content=request.content
+        )
+        return storage_pb2.ChunkHashResponse(
+            part_number=res["part_number"],
+            chunk_sha256=res["chunk_sha256"],
+            calculated_by_server=res["calculated_by_server"],
+            worker_thread=res["worker_thread"]
         )
 
     def SaveChunk(self, request, context):
@@ -45,15 +61,21 @@ class FileGrpcController(storage_pb2_grpc.FileServiceServicer):
             chunk_filename=request.chunk_filename,
             content=request.content,
             original_size=request.original_size,
-            client_id=request.client_id or "anonimo"
+            client_id=request.client_id or "anonimo",
+            chunk_sha256=request.chunk_sha256,
+            combined_file_sha256=request.combined_file_sha256
         )
         return storage_pb2.ChunkUploadResponse(
-            success=True,
-            message=f"Parte {request.part_number}/{request.total_parts} salva e replicada no Backup com posse do Token!",
+            success=res["success"],
+            is_duplicate=res["is_duplicate"],
+            duplicate_of_filename=res["duplicate_of_filename"],
+            message=res["message"],
             handled_by=self.server_id,
             chunk_path=res["chunk_path"],
             backup_path=res["backup_path"],
-            replicated=res["replicated"]
+            replicated=res["replicated"],
+            chunk_sha256=res["chunk_sha256"],
+            combined_file_sha256=res["combined_file_sha256"]
         )
 
     def GetChunk(self, request, context):

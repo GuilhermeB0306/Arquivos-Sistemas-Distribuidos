@@ -19,7 +19,14 @@ def serve():
     repository = BackupRepository()
     backup_service = BackupReplicationService(repository=repository)
 
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    MAX_MESSAGE_LENGTH = 200 * 1024 * 1024  # 200 MB
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10),
+        options=[
+            ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
+            ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
+        ],
+    )
     storage_pb2_grpc.add_FileServiceServicer_to_server(
         BackupGrpcController(backup_service), server
     )

@@ -30,8 +30,15 @@ def serve():
         backup_client=backup_client
     )
 
-    # 3. Configura o Servidor gRPC com Pool de Threads (Concorrência)
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    # 3. Configura o Servidor gRPC com Pool de Threads (Concorrência) e limite de 200MB por mensagem
+    MAX_MESSAGE_LENGTH = 200 * 1024 * 1024  # 200 MB
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10),
+        options=[
+            ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
+            ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
+        ],
+    )
 
     storage_pb2_grpc.add_FileServiceServicer_to_server(
         FileGrpcController(file_service), server

@@ -15,6 +15,10 @@ class BackupGrpcClient:
     def __init__(self):
         self.backup_address = Config.BACKUP_SERVER_ADDRESS
         self.server_id = Config.SERVER_ID
+        self.grpc_options = [
+            ("grpc.max_send_message_length", 200 * 1024 * 1024),
+            ("grpc.max_receive_message_length", 200 * 1024 * 1024),
+        ]
 
     def replicate_chunk(
         self,
@@ -25,7 +29,7 @@ class BackupGrpcClient:
         content: bytes
     ) -> dict:
         try:
-            with grpc.insecure_channel(self.backup_address) as channel:
+            with grpc.insecure_channel(self.backup_address, options=self.grpc_options) as channel:
                 stub = storage_pb2_grpc.FileServiceStub(channel)
                 response = stub.ReplicateChunk(
                     storage_pb2.ChunkReplicationRequest(

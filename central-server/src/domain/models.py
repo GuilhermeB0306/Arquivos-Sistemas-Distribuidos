@@ -11,6 +11,7 @@ class ChunkRecord:
     saved_path: str
     backup_server_address: str = "server-backup:50053"
     backup_saved_path: str = ""
+    chunk_sha256: str = ""
 
 @dataclass
 class FileRecord:
@@ -19,4 +20,5 @@ class FileRecord:
     total_parts: int
     uploaded_by: str
     timestamp: str
+    combined_file_sha256: str = ""
     chunks: List[ChunkRecord] = field(default_factory=list)

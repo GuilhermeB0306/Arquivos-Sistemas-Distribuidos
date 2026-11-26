@@ -1,0 +1,356 @@
+\documentclass[12pt, a4paper]{article}
+
+% =========================================================================
+% PACOTES E CONFIGURAÇÕES
+% =========================================================================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{geometry}
+\geometry{a4paper, left=3cm, top=3cm, right=2cm, bottom=2cm}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{indentfirst}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds, calc}
+
+% Configuração de links
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    urlcolor=blue!70!black,
+    citecolor=blue!70!black
+}
+
+% Configuração de blocos de código
+\definecolor{codebg}{rgb}{0.96,0.96,0.96}
+\definecolor{codeframe}{rgb}{0.8,0.8,0.8}
+\definecolor{codegreen}{rgb}{0,0.5,0}
+\definecolor{codeblue}{rgb}{0.1,0.2,0.7}
+
+\lstset{
+    backgroundcolor=\color{codebg},
+    frame=single,
+    rulecolor=\color{codeframe},
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    keywordstyle=\color{codeblue}\bfseries,
+    commentstyle=\color{codegreen}\itshape,
+    stringstyle=\color{red!70!black},
+    showstringspaces=false,
+    tabsize=4,
+    inputencoding=utf8,
+    extendedchars=true,
+    literate={á}{{\'a}}1 {ã}{{\~a}}1 {â}{{\^a}}1 {à}{{\`a}}1
+             {é}{{\'e}}1 {ê}{{\^e}}1 {í}{{\'i}}1 {ó}{{\'o}}1
+             {õ}{{\~o}}1 {ô}{{\^o}}1 {ú}{{\'u}}1 {ç}{{\c{c}}}1
+             {Á}{{\'A}}1 {Ã}{{\~A}}1 {É}{{\'E}}1 {Í}{{\'I}}1
+             {Ó}{{\'O}}1 {Õ}{{\~O}}1 {Ú}{{\'U}}1 {Ç}{{\c{C}}}1
+}
+
+% =========================================================================
+% INÍCIO DO DOCUMENTO
+% =========================================================================
+\begin{document}
+
+% -------------------------------------------------------------------------
+% CAPA / CABEÇALHO
+% -------------------------------------------------------------------------
+\begin{titlepage}
+    \centering
+    \vspace*{1cm}
+    {\Large \textbf{DISCIPLINA DE SISTEMAS DISTRIBUÍDOS}}\\[1.5cm]
+    
+    {\huge \textbf{Sistema de Armazenamento Distribuído com Fragmentação Binária, Exclusão Mútua via Token Ring, Deduplicação SHA-256 e Tolerância a Falhas}}\\[1.5cm]
+    
+    \textbf{Relatório Técnico do Projeto Prático}\\[2cm]
+    
+    \begin{flushright}
+        \textbf{Integrantes do Grupo:}\\
+        Guilherme e Equipe\\[0.5cm]
+        \textbf{Tecnologias Utilizadas:}\\
+        Python 3.11, FastAPI (REST + Swagger), gRPC (HTTP/2 + Protobuf),\\
+        PyJWT (Stateless Auth), SQLite, Multithreading, SHA-256 e Docker Compose.
+    \end{flushright}
+    
+    \vfill
+    {\large \today}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% =========================================================================
+% 1. INTRODUÇÃO
+% =========================================================================
+\section{Introdução}
+
+O crescimento exponencial do volume de dados trafegados em aplicações modernas tornou inviável o armazenamento e o processamento de arquivos em arquiteturas monolíticas e centralizadas. Sistemas de arquivos distribuídos de larga escala --- como o \textit{Google File System} (GFS) e o \textit{Hadoop Distributed File System} (HDFS) --- demonstram que a divisão de arquivos em fragmentos (\textit{chunks}), associada à distribuição de carga, controle rigoroso de concorrência e replicação de dados, é fundamental para alcançar alta disponibilidade, escalabilidade e integridade.
+
+Neste trabalho, foi projetado e desenvolvido um \textbf{Sistema Distribuído Completo de Armazenamento de Arquivos}, conteinerizado através do \textit{Docker Compose} e dividido em quatro nós independentes comunicando-se em rede: um \textbf{Servidor de Borda (\textit{Edge Server})}, dois \textbf{Servidores Centrais de Processamento e Armazenamento (\textit{Central-1} e \textit{Central-2})} e um \textbf{Servidor de Redundância (\textit{Server-Backup})}.
+
+A solução integra conceitos fundamentais abordados na disciplina de Sistemas Distribuídos:
+\begin{itemize}
+    \item \textbf{Arquitetura \textit{Stateless} e Tradução de Protocolos:} Exposição de uma API REST (HTTP/JSON e Multipart) com autenticação \textit{Stateless} via \textbf{JWT (\textit{JSON Web Token})} na borda, convertendo as chamadas para \textbf{gRPC (HTTP/2 e \textit{Protocol Buffers})} na rede interna;
+    \item \textbf{Fragmentação Horizontal (\textit{File Sharding / Byte Slicing}):} Divisão binária de cada arquivo enviado em duas metades (\texttt{.part1} e \texttt{.part2}), distribuídas entre os servidores centrais;
+    \item \textbf{Balanceamento de Carga (\textit{Load Balancing}):} Distribuição uniforme de requisições utilizando o algoritmo \textbf{\textit{Round-Robin}} \textit{Thread-Safe};
+    \item \textbf{Validação Distribuída de Duplicidade via Soma SHA-256:} Utilização de \textit{Worker Threads} nos servidores centrais para calcular o hash criptográfico SHA-256 de cada metade do arquivo e validar, pela soma composta dos hashes, se o arquivo completo já existe no sistema;
+    \item \textbf{Exclusão Mútua Distribuída (\textit{Token Ring}):} Coordenação em anel lógico entre os servidores centrais para acesso exclusivo à \textbf{Região Crítica} (atualização do Banco de Metadados SQLite e replicação);
+    \item \textbf{Replicação Primário-Backup e Tolerância a Falhas (\textit{Failover}):} Cópia síncrona das fatias para um nó de backup e recuperação automática e transparente durante o download caso um dos servidores centrais fique indisponível.
+\end{itemize}
+
+% =========================================================================
+% 2. APRESENTAÇÃO DO PROBLEMA (JUSTIFICATIVA)
+% =========================================================================
+\section{Apresentação do Problema (Justificativa)}
+
+Em um sistema distribuído de upload e download de arquivos acessado simultaneamente por múltiplos clientes, surgem cinco problemas clássicos que justificam a arquitetura proposta neste trabalho:
+
+\subsection{Sobrecarga e Gargalo em Servidor Único}
+Se todos os clientes enviarem arquivos grandes diretamente para um único servidor de armazenamento, a largura de banda, a CPU e o subsistema de disco desse nó rapidamente se tornarão um gargalo (\textit{bottleneck}). Faz-se necessário um nó intermediário de borda que distribua a carga e fragmente os arquivos entre múltiplos servidores de backend.
+
+\subsection{Manutenção de Estado de Sessão em Ambiente Distribuído}
+Sistemas que armazenam sessões de usuário na memória local de um servidor violam a escalabilidade horizontal, exigindo afinidade de sessão (\textit{sticky sessions}). O sistema precisa autenticar os usuários de forma \textbf{\textit{Stateless} (sem estado)}, permitindo que qualquer requisição seja processada de maneira independente.
+
+\subsection{Condição de Corrida (\textit{Race Condition}) na Região Crítica}
+Quando um arquivo é dividido ao meio e enviado simultaneamente em threads paralelas para o \texttt{central-1} e o \texttt{central-2}, ambos os servidores precisam registrar a localização de sua respectiva fatia no \textbf{Banco de Dados de Metadados} compartilhado (\texttt{metadata\_chunks.db} / \texttt{catalog.json}). Caso os dois servidores escrevam simultaneamente no banco de metadados sem coordenação, ocorrerá corrupção de dados, perda de registros ou bloqueio de escrita (\textit{database lock}). É indispensável um algoritmo de \textbf{Exclusão Mútua Distribuída} para serializar o acesso à Região Crítica de escrita, mantendo as leituras (downloads) livres e paralelas.
+
+\subsection{Armazenamento Redundante de Arquivos Duplicados e Falsos Positivos em Fatias}
+Usuários frequentemente fazem upload do mesmo arquivo repetidas vezes (inclusive alterando apenas o nome do arquivo). Entretanto, como o sistema divide os arquivos ao meio (50\% no Servidor 1 e 50\% no Servidor 2), validar apenas uma metade isolada geraria um \textbf{falso positivo}: dois arquivos diferentes que possuam os primeiros 50\% idênticos (ex.: mesmo cabeçalho de um PDF) e os outros 50\% diferentes não são arquivos duplicados. Portanto, o problema exige que os \textit{workers} de cada servidor central calculem o hash SHA-256 de sua metade e que a validação de duplicidade ocorra sobre a \textbf{combinação (soma) dos hashes das duas partes}.
+
+\subsection{Perda de Dados por Queda de Nó (\textit{Single Point of Failure})}
+Ao fragmentar um arquivo em duas partes distribuídas entre \texttt{central-1} e \texttt{central-2}, a falha ou desligamento de apenas um desses containers impediria a remontagem do arquivo original durante o download. O sistema precisa garantir \textbf{Tolerância a Falhas} através de um container de redundância (\texttt{server-backup}) e um mecanismo de \textbf{\textit{Failover} Automático}.
+
+% =========================================================================
+% 3. METODOLOGIA (COMO SERÁ RESOLVIDO O PROBLEMA)
+% =========================================================================
+\section{Metodologia}
+
+Para solucionar os problemas delimitados na seção anterior, a metodologia adotada combina seis técnicas clássicas de Sistemas Distribuídos:
+
+\begin{enumerate}
+    \item \textbf{Autenticação \textit{Stateless} com JWT (HS256):}
+    O cliente autentica-se no endpoint \texttt{POST /api/auth/login} do Servidor de Borda e recebe um token JWT assinado digitalmente contendo a identidade do usuário (\texttt{sub}) e seu tempo de expiração (\texttt{exp}). Em todas as requisições subsequentes de upload, listagem e download, o Servidor de Borda valida apenas a assinatura criptográfica do token no cabeçalho \texttt{Authorization: Bearer}, sem guardar estado de sessão em memória.
+
+    \item \textbf{Tradução de Protocolo (REST $\rightarrow$ gRPC com Protocol Buffers):}
+    Para oferecer compatibilidade universal aos clientes externos (navegadores, \textit{Swagger UI}, scripts HTTP), a borda utiliza \textbf{REST sobre HTTP/1.1}. Internamente, toda a comunicação entre o Servidor de Borda, os Servidores Centrais e o Servidor de Backup utiliza \textbf{gRPC sobre HTTP/2} com serialização binária \textbf{\textit{Protocol Buffers}}, configurada para suportar mensagens binárias de até 200 MB por fatia.
+
+    \item \textbf{Fragmentação Binária (\textit{Byte Slicing}) e Balanceamento \textit{Round-Robin}:}
+    Ao receber um arquivo de tamanho $N$ bytes, o Servidor de Borda calcula o ponto médio $\lfloor N / 2 \rfloor$ e fatia o fluxo de bytes em duas partes:
+    \[
+        \text{Parte 1} = \text{bytes}[0 : \lfloor N/2 \rfloor], \quad \text{Parte 2} = \text{bytes}[\lfloor N/2 \rfloor : N]
+    \]
+    O balanceador de carga \textit{Round-Robin} (protegido por \texttt{threading.Lock}) seleciona o servidor central de destino para cada fatia, alternando circularmente entre \texttt{central-1:50051} e \texttt{central-2:50052}.
+
+    \item \textbf{Deduplicação Distribuída por Soma de Hashes SHA-256 nos Workers:}
+    Antes de gravar os dados em disco, o Servidor de Borda aciona paralelamente o procedimento remoto \texttt{ComputeChunkHash} nos dois Servidores Centrais. Uma \textit{Worker Thread} do \texttt{central-1} calcula $H_1 = \text{SHA256}(\text{Parte 1})$ e uma \textit{Worker Thread} do \texttt{central-2} calcula $H_2 = \text{SHA256}(\text{Parte 2})$. A partir de ambos os resultados, calcula-se o \textbf{Hash Composto (Soma)}:
+    \[
+        H_{\text{composto}} = \text{SHA256}(H_1 \mathbin{\Vert} \text{``:''} \mathbin{\Vert} H_2)
+    \]
+    Dessa forma, se um arquivo novo tiver apenas 50\% de conteúdo igual a outro arquivo já existente, $H_{\text{composto}}$ será diferente e o upload será permitido. Se 100\% do arquivo (ambas as metades) for igual, $H_{\text{composto}}$ coincidirá com o registro existente no banco SQLite e o upload será bloqueado com status HTTP \texttt{409 Conflict}.
+
+    \item \textbf{Exclusão Mútua Distribuída com Algoritmo \textit{Token Ring}:}
+    Os servidores \texttt{central-1} e \texttt{central-2} formam um anel lógico no qual um \textbf{Token} circula continuamente via chamadas gRPC (\texttt{PassToken}) gerenciadas por uma thread dedicada em background.
+    \begin{itemize}
+        \item \textbf{Operações de Leitura (Download e Listagem):} Não alteram estado e são executadas imediatamente em paralelo, sem aguardar o Token;
+        \item \textbf{Operações de Escrita (\texttt{SaveChunk}):} A thread trabalhadora fica aguardando em uma variável de condição (\texttt{threading.Condition}) até que o servidor detenha o Token. Ao obter o Token, a thread entra na \textbf{Região Crítica}, verifica a duplicidade de $H_{\text{composto}}$ no SQLite, grava a fatia em seu diretório exclusivo, replica para o \texttt{server-backup}, registra os ponteiros no banco SQLite e libera a Região Crítica para que o Token siga para o próximo nó do anel.
+        \item \textbf{\textit{Self-Healing} no Anel:} Caso um dos servidores centrais caia, o nó sobrevivente detecta a falha na chamada \texttt{PassToken} e retém o Token localmente para não interromper o funcionamento do cluster.
+    \end{itemize}
+
+    \item \textbf{Replicação Primário-Backup e \textit{Failover} na Remontagem (\textit{Reassembly}):}
+    Durante a execução na Região Crítica, cada Servidor Central invoca o método gRPC \texttt{ReplicateChunk} no container \texttt{server-backup:50053}, que armazena cópias redundantes tanto da \texttt{.part1} quanto da \texttt{.part2}. No momento do download, o Servidor de Borda consulta o Mapa de Chunks no banco SQLite e busca cada metade em seu servidor primário; caso o servidor primário esteja offline (\texttt{grpc.RpcError}), o Servidor de Borda redireciona automaticamente a busca da fatia faltante para o \texttt{server-backup} (\textit{Failover}), remonta os bytes em memória (\texttt{Parte 1 + Parte 2}) e entrega o arquivo íntegro ao usuário.
+\end{enumerate}
+
+% =========================================================================
+% 4. ARQUITETURA DA SOLUÇÃO
+% =========================================================================
+\section{Arquitetura da Solução}
+
+A arquitetura da solução é composta por quatro containers Docker interconectados por uma rede virtual do tipo \textit{bridge} (\texttt{sd\_network}). A Figura \ref{fig:arquitetura} apresenta o diagrama detalhado da arquitetura e o fluxo de comunicação entre os componentes.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=1.4cm and 1.8cm,
+    box/.style={rectangle, draw=blue!60!black, fill=blue!5, thick, minimum width=3.6cm, minimum height=1.3cm, align=center, rounded corners=4pt, font=\footnotesize\sffamily},
+    edgebox/.style={rectangle, draw=orange!80!black, fill=orange!10, thick, minimum width=4.2cm, minimum height=2.2cm, align=center, rounded corners=4pt, font=\footnotesize\sffamily},
+    centralbox/.style={rectangle, draw=green!50!black, fill=green!8, thick, minimum width=4.2cm, minimum height=2.2cm, align=center, rounded corners=4pt, font=\footnotesize\sffamily},
+    backupbox/.style={rectangle, draw=purple!70!black, fill=purple!8, thick, minimum width=4.2cm, minimum height=1.6cm, align=center, rounded corners=4pt, font=\footnotesize\sffamily},
+    dbbox/.style={cylinder, shape border rotate=90, draw=black!70, fill=gray!15, thick, minimum width=3.2cm, minimum height=1.3cm, align=center, font=\scriptsize\sffamily},
+    arrow/.style={-{Stealth[length=2.5mm]}, thick, draw=black!80},
+    tokenarrow/.style={-{Stealth[length=2.5mm]}, ultra thick, draw=red!75!black, dashed},
+    failoverarrow/.style={-{Stealth[length=2.5mm]}, thick, draw=purple!80!black, dotted}
+]
+
+% Cliente
+\node[box] (client) {\textbf{Cliente Externo}\\(Swagger UI / REST Client)\\Token JWT Bearer};
+
+% Edge Server
+\node[edgebox, right=1.8cm of client] (edge) {\textbf{Container 1: edge-server}\\(FastAPI - Porta 8080)\\[2pt]
+$\bullet$ Autenticação Stateless JWT\\
+$\bullet$ Fatiamento Binário (50\% / 50\%)\\
+$\bullet$ Load Balancer (Round-Robin)\\
+$\bullet$ Soma SHA-256 \& Failover};
+
+% Central 1 e Central 2
+\node[centralbox, above right=0.6cm and 2.2cm of edge] (c1) {\textbf{Container 2: central-1}\\(gRPC Server - Porta 50051)\\[2pt]
+$\bullet$ Pool 10 Worker Threads\\
+$\bullet$ Cálculo SHA-256 (Parte 1)\\
+$\bullet$ Thread Token Ring\\
+$\bullet$ Pasta: \texttt{storage\_data/central-1}};
+
+\node[centralbox, below right=0.6cm and 2.2cm of edge] (c2) {\textbf{Container 3: central-2}\\(gRPC Server - Porta 50052)\\[2pt]
+$\bullet$ Pool 10 Worker Threads\\
+$\bullet$ Cálculo SHA-256 (Parte 2)\\
+$\bullet$ Thread Token Ring\\
+$\bullet$ Pasta: \texttt{storage\_data/central-2}};
+
+% Server Backup
+\node[backupbox, below=1.6cm of edge] (backup) {\textbf{Container 4: server-backup}\\(gRPC Server - Porta 50053)\\[2pt]
+$\bullet$ Réplica Redundante (\texttt{.part1} e \texttt{.part2})\\
+$\bullet$ Pasta: \texttt{storage\_data/server-backup}};
+
+% Banco de Metadados SQLite
+\node[dbbox, right=1.6cm of $(c1.south)!0.5!(c2.north)$] (db) {\textbf{Região Crítica}\\Banco SQLite\\(\texttt{metadata\_chunks.db})\\Mapa de Ponteiros};
+
+% Setas de comunicação
+\draw[arrow] (client) -- node[above, font=\scriptsize, align=center] {HTTP REST\\(JWT Auth)} (edge);
+
+\draw[arrow] (edge.east) -- node[above, sloped, font=\scriptsize] {gRPC: Parte 1 (50\%)} (c1.west);
+\draw[arrow] (edge.east) -- node[below, sloped, font=\scriptsize] {gRPC: Parte 2 (50\%)} (c2.west);
+
+% Token Ring entre Central 1 e Central 2
+\draw[tokenarrow] (c1.south) to[bend left=20] node[right, font=\scriptsize\bfseries, text=red!75!black] {Token Ring (gRPC PassToken)} (c2.north);
+\draw[tokenarrow] (c2.north) to[bend left=20] (c1.south);
+
+% Acesso à Região Crítica (SQLite)
+\draw[arrow] (c1.east) -- node[above, sloped, font=\scriptsize] {Escrita c/ Token} (db.north west);
+\draw[arrow] (c2.east) -- node[below, sloped, font=\scriptsize] {Escrita c/ Token} (db.south west);
+
+% Replicação para o Backup
+\draw[arrow, draw=purple!70!black] (c1.south west) to[bend right=15] node[above, sloped, font=\scriptsize, text=purple!80!black] {gRPC ReplicateChunk} (backup.north east);
+\draw[arrow, draw=purple!70!black] (c2.west) to[bend left=15] (backup.east);
+
+% Failover do Edge para o Backup
+\draw[failoverarrow] (edge.south) -- node[left, font=\scriptsize, text=purple!80!black, align=right] {gRPC GetChunk\\(Failover Automático)} (backup.north);
+
+\end{tikzpicture}
+\caption{Diagrama da Arquitetura Distribuída dos 4 Containers e Fluxo de Dados.}
+\label{fig:arquitetura}
+\end{figure}
+
+\subsection{Descrição dos Componentes do Diagrama}
+
+\begin{enumerate}
+    \item \textbf{Container 1 --- Servidor de Borda (\texttt{edge-server} na porta \texttt{8080}):}
+    Atua como \textit{API Gateway}, autenticador \textit{Stateless} JWT, fragmentador de arquivos (\textit{Sharding}) e balanceador de carga (\textit{Round-Robin}). Ele recebe o arquivo via REST, divide-o ao meio, solicita em paralelo aos workers dos servidores centrais o cálculo do SHA-256 de cada metade, gera o hash composto da soma e distribui as fatias via gRPC. No download, consulta o mapa de metadados, busca as fatias (acionando o \textit{Failover} no \texttt{server-backup} caso algum servidor central não responda) e remonta o arquivo original.
+
+    \item \textbf{Container 2 e Container 3 --- Servidores Centrais (\texttt{central-1:50051} e \texttt{central-2:50052}):}
+    São os nós primários de processamento e armazenamento distribuído. Cada container executa um servidor gRPC com um pool de \textbf{10 \textit{Worker Threads}} (\texttt{ThreadPoolExecutor}) para processar cálculos de hash SHA-256, leituras e escritas concorrentes, além de \textbf{1 \textit{Thread} dedicada em background} responsável pela circulação do \textbf{Token Ring}. Cada nó armazena apenas a sua metade correspondente do arquivo (\texttt{storage\_data/central-1/} guarda uma metade e \texttt{storage\_data/central-2/} guarda a outra).
+
+    \item \textbf{Região Crítica --- Banco de Metadados (\texttt{metadata\_chunks.db} e \texttt{catalog.json}):}
+    Banco de dados relacional SQLite que armazena apenas os metadados e ponteiros de localização dos arquivos e suas fatias (tabela \texttt{files} com o hash composto \texttt{combined\_file\_sha256} e tabela \texttt{file\_chunks} indicando em qual servidor central e em qual caminho de backup está cada parte). O acesso de escrita a este banco é protegido pelo algoritmo \textit{Token Ring}.
+
+    \item \textbf{Container 4 --- Servidor de Redundância (\texttt{server-backup:50053}):}
+    Container dedicado exclusivamente à alta disponibilidade e redundância de dados. Ele recebe cópias síncronas via gRPC (\texttt{ReplicateChunk}) das partes gravadas por \texttt{central-1} e \texttt{central-2}, mantendo-as em \texttt{storage\_data/server-backup/}. Quando um servidor central primário é desligado ou falha, o \texttt{server-backup} responde às chamadas \texttt{GetChunk} do Servidor de Borda, garantindo que nenhum arquivo fique inacessível.
+\end{enumerate}
+
+% =========================================================================
+% 5. PROTÓTIPO DA SOLUÇÃO (DESCREVER O QUE FOI FEITO)
+% =========================================================================
+\section{Protótipo da Solução}
+
+O protótipo foi inteiramente implementado em \textbf{Python 3.11} seguindo uma arquitetura limpa organizada em camadas (\texttt{config}, \texttt{domain}, \texttt{schemas}, \texttt{routes}, \texttt{controllers}, \texttt{services} e \texttt{infrastructure}) dentro de cada microsserviço.
+
+\subsection{Organização em Camadas do Código-Fonte}
+
+\begin{itemize}
+    \item \textbf{\texttt{edge-server/}:}
+    \begin{itemize}
+        \item \texttt{src/routes/auth\_routes.py} e \texttt{file\_routes.py}: Definição das rotas HTTP REST e documentação interativa no \textit{Swagger UI} (\texttt{/docs});
+        \item \texttt{src/services/auth\_service.py}: Geração e verificação de tokens JWT (\textit{PyJWT}) com esquema \texttt{HTTPBearer};
+        \item \texttt{src/services/load\_balancer\_service.py}: Implementação do algoritmo \textit{Round-Robin} com exclusão mútua local (\texttt{threading.Lock});
+        \item \texttt{src/services/edge\_gateway\_service.py}: Lógica de divisão binária do arquivo ao meio, disparo paralelo em \texttt{ThreadPoolExecutor} para cálculo dos hashes SHA-256 nos workers centrais, geração da soma composta dos hashes e lógica de \textit{Failover} automático no download;
+        \item \texttt{src/infrastructure/grpc\_client.py}: Cliente gRPC configurado para transporte de blocos de até 200 MB.
+    \end{itemize}
+
+    \item \textbf{\texttt{central-server/}:}
+    \begin{itemize}
+        \item \texttt{proto/storage.proto}: Contrato formal \textit{Protocol Buffers} definindo os serviços \texttt{FileService} (\texttt{ComputeChunkHash}, \texttt{SaveChunk}, \texttt{ReplicateChunk}, \texttt{GetChunk}, \texttt{GetFileMap}, \texttt{ListFiles}) e \texttt{TokenRingService} (\texttt{PassToken});
+        \item \texttt{src/services/token\_ring\_service.py}: Implementação do anel lógico com \texttt{threading.Condition}, controle de fila de escritores (\texttt{waiting\_writers}) e mecanismo \textit{Self-Healing} caso o nó vizinho fique offline;
+        \item \texttt{src/services/file\_service.py}: Execução das \textit{Worker Threads} para cálculo do SHA-256 da fatia recebida, validação de duplicidade pela soma dos hashes dentro da Região Crítica e disparo da replicação para o backup;
+        \item \texttt{src/infrastructure/storage\_repository.py}: Persistência física da fatia na pasta exclusiva do servidor e transações SQL no banco SQLite de metadados.
+    \end{itemize}
+
+    \item \textbf{\texttt{server-backup/}:}
+    \begin{itemize}
+        \item \texttt{src/services/backup\_service.py} e \texttt{src/infrastructure/backup\_repository.py}: Recebimento via gRPC das réplicas enviadas pelos servidores centrais e atendimento de leituras de emergência (\textit{Failover}).
+    \end{itemize}
+\end{itemize}
+
+\subsection{Principais Trechos Implementados no Protótipo}
+
+O Listing \ref{lst:sharding} demonstra o fatiamento binário do arquivo ao meio e o cálculo distribuído da soma dos hashes SHA-256 pelos workers dos servidores centrais no \texttt{edge-server}.
+
+\begin{lstlisting}[language=Python, caption={Fatiamento ao meio e Soma Distribuída do SHA-256 (\texttt{edge\_gateway\_service.py}).}, label={lst:sharding}]
+original_size = len(content)
+midpoint = original_size // 2
+
+# Divide os bytes do arquivo exatamente na metade
+part1_bytes = content[:midpoint]
+part2_bytes = content[midpoint:]
+
+# Etapa 1: Workers do central-1 e central-2 calculam o SHA-256 de cada metade em paralelo
+part1_hash = hash_results[1]["chunk_sha256"]
+part2_hash = hash_results[2]["chunk_sha256"]
+
+# Etapa 2: Soma dos Hashes (evita falso positivo caso apenas 50% do arquivo seja igual)
+combined_raw = f"{part1_hash}:{part2_hash}".encode("utf-8")
+combined_file_sha256 = hashlib.sha256(combined_raw).hexdigest()
+\end{lstlisting}
+
+O Listing \ref{lst:tokenring} exibe o controle de acesso à Região Crítica implementado no \texttt{TokenRingService} dos servidores centrais.
+
+\begin{lstlisting}[language=Python, caption={Sincronização de Threads no Algoritmo Token Ring (\texttt{token\_ring\_service.py}).}, label={lst:tokenring}]
+def enter_critical_section(self, operation_desc: str):
+    with self.condition:
+        self.waiting_writers += 1
+        while not self.has_token or self.in_critical_section:
+            self.condition.wait()
+        self.waiting_writers -= 1
+        self.in_critical_section = True
+
+def exit_critical_section(self, operation_desc: str):
+    with self.condition:
+        self.in_critical_section = False
+        self.condition.notify_all()
+\end{lstlisting}
+
+\subsection{Roteiro de Testes e Validação Realizada}
+
+O protótipo foi validado através da interface \textit{Swagger UI} (\texttt{http://localhost:8080/docs}) e monitoramento em tempo real dos logs do Docker Compose:
+\begin{enumerate}
+    \item \textbf{Teste de Autenticação Stateless JWT:} Geração do token na rota \texttt{POST /api/auth/login} e autorização no cadeado do Swagger;
+    \item \textbf{Teste de Upload, Sharding, Token Ring e Replicação:} Envio de um documento PDF (\texttt{Prolog (4).pdf}). Verificou-se no diretório \texttt{storage\_data/} que a primeira metade (\texttt{.part1}) foi gravada em \texttt{central-1/}, a segunda metade (\texttt{.part2}) foi gravada em \texttt{central-2/}, ambas foram replicadas em \texttt{server-backup/} e o banco \texttt{metadata\_chunks.db} registrou os ponteiros sem conflito de concorrência graças ao \textit{Token Ring};
+    \item \textbf{Teste de Deduplicação pela Soma SHA-256:} Ao reenviar o mesmo arquivo, os workers calcularam os hashes das metades e o servidor central bloqueou a operação dentro da Região Crítica com status HTTP \texttt{409 Conflict}, identificando tratar-se de uma duplicata exata. Arquivos com apenas 50\% de conteúdo igual geraram uma soma SHA-256 distinta e foram aceitos normalmente;
+    \item \textbf{Teste de Queda de Nó e \textit{Failover} Automático:} O container \texttt{central-2} foi interrompido (\texttt{docker stop central-2}) e solicitou-se o download do arquivo via \texttt{GET /api/download/\{filename\}}. O Servidor de Borda detectou a falha do \texttt{central-2}, recuperou a \texttt{Parte 1} do \texttt{central-1} e a \texttt{Parte 2} diretamente do \texttt{server-backup}, remontando o arquivo PDF perfeitamente e sem perda de dados.
+\end{enumerate}
+
+% =========================================================================
+% 6. CONCLUSÃO
+% =========================================================================
+\section{Conclusão}
+
+O desenvolvimento deste projeto permitiu aplicar, de forma prática e integrada, os principais conceitos teóricos da disciplina de Sistemas Distribuídos em um problema real de armazenamento, concorrência e disponibilidade de arquivos.
+
+A separação da arquitetura em quatro containers Docker (\texttt{edge-server}, \texttt{central-1}, \texttt{central-2} e \texttt{server-backup}) demonstrou na prática as vantagens do desacoplamento e da transparência em sistemas distribuídos. Para o cliente externo, toda a complexidade interna fica oculta atrás de uma API REST simples e \textit{Stateless} autenticada via JWT. Internamente, o uso do \textbf{gRPC com \textit{Protocol Buffers}} proporcionou uma comunicação binária de alto desempenho tanto para o transporte das fatias de arquivos quanto para a passagem contínua do bastão no algoritmo \textbf{\textit{Token Ring}}.
+
+Destaca-se ainda a eficácia de combinar três mecanismos complementares no backend: (1) a \textbf{fragmentação binária ao meio com balanceamento \textit{Round-Robin}}, que dividiu o custo de armazenamento e rede entre os dois servidores centrais; (2) a \textbf{validação de duplicidade pela soma dos hashes SHA-256 calculados pelos \textit{workers}}, que impediu a gravação de arquivos repetidos sem incorrer no erro de bloquear arquivos que possuam apenas uma metade semelhante; e (3) a \textbf{replicação síncrona para o servidor de backup aliada ao \textit{Failover} automático}, que comprovou a resiliência do sistema mesmo diante da queda completa de um dos servidores centrais.
+
+\end{document}

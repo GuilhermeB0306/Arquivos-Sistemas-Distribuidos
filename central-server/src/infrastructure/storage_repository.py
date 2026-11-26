@@ -9,10 +9,10 @@ from src.domain.models import FileRecord, ChunkRecord
 class StorageRepository:
     """
     Camada de Infraestrutura:
-    1. Salva a metade (chunk) do arquivo na pasta EXCLUSIVA deste Servidor Central
-       (ex: storage_data/central-1/arquivo.txt.part1 ou storage_data/central-2/arquivo.txt.part2).
-    2. Registra no Banco de Dados SQLite compartilhado onde está a parte primária E onde está
-       a cópia de redundância no 'server-backup' (Região Crítica protegida pelo Token Ring).
+    1. Verifica no Banco SQLite se a SOMA dos hashes SHA-256 (combined_file_sha256)
+       já existe pertencendo a outro arquivo (Validação de Duplicidade Distribuída).
+    2. Salva a metade (chunk) na pasta exclusiva deste Servidor Central e registra
+       o hash individual da fatia (chunk_sha256) e o hash composto (combined_file_sha256).
     """
     def __init__(self):
         os.makedirs(Config.STORAGE_DIR, exist_ok=True)
@@ -31,7 +31,8 @@ class StorageRepository:
                     original_size INTEGER,
                     total_parts INTEGER,
                     uploaded_by TEXT,
-                    timestamp TEXT
+                    timestamp TEXT,
+                    combined_file_sha256 TEXT
                 )
             """)
             cursor.execute("""
@@ -45,17 +46,45 @@ class StorageRepository:
                     saved_path TEXT,
                     backup_server_address TEXT,
                     backup_saved_path TEXT,
+                    chunk_sha256 TEXT,
                     PRIMARY KEY (filename, part_number)
                 )
             """)
-            # Garante migração suave caso a tabela antiga não tivesse as colunas de backup
+            # Migração automática caso o banco SQLite já exista de testes anteriores
+            cursor.execute("PRAGMA table_info(files)")
+            file_cols = {row[1] for row in cursor.fetchall()}
+            if "combined_file_sha256" not in file_cols:
+                cursor.execute("ALTER TABLE files ADD COLUMN combined_file_sha256 TEXT")
+
             cursor.execute("PRAGMA table_info(file_chunks)")
-            existing_cols = {row[1] for row in cursor.fetchall()}
-            if "backup_server_address" not in existing_cols:
+            chunk_cols = {row[1] for row in cursor.fetchall()}
+            if "backup_server_address" not in chunk_cols:
                 cursor.execute("ALTER TABLE file_chunks ADD COLUMN backup_server_address TEXT")
-            if "backup_saved_path" not in existing_cols:
+            if "backup_saved_path" not in chunk_cols:
                 cursor.execute("ALTER TABLE file_chunks ADD COLUMN backup_saved_path TEXT")
+            if "chunk_sha256" not in chunk_cols:
+                cursor.execute("ALTER TABLE file_chunks ADD COLUMN chunk_sha256 TEXT")
             conn.commit()
+
+    def find_duplicate_by_combined_hash(self, combined_file_sha256: str) -> Optional[str]:
+        """
+        Verifica no Banco de Metadados se JÁ EXISTE um arquivo completo (com as 2 partes salvas)
+        cujo hash composto (SHA-256 da Parte 1 + Parte 2) seja idêntico.
+        Se apenas 50% (uma parte) for igual, o combined_file_sha256 será diferente e NÃO acusará duplicata!
+        """
+        if not combined_file_sha256:
+            return None
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT f.filename
+                FROM files f
+                WHERE f.combined_file_sha256 = ?
+                  AND (SELECT COUNT(*) FROM file_chunks fc WHERE fc.filename = f.filename) >= f.total_parts
+                LIMIT 1
+            """, (combined_file_sha256,))
+            row = cursor.fetchone()
+            return row[0] if row else None
 
     def save_chunk_and_register(
         self,
@@ -67,7 +96,9 @@ class StorageRepository:
         original_size: int,
         client_id: str,
         backup_server_address: str,
-        backup_saved_path: str
+        backup_saved_path: str,
+        chunk_sha256: str,
+        combined_file_sha256: str
     ) -> str:
         # 1. Salva a fatia física na pasta exclusiva deste nó primário
         local_chunk_path = os.path.join(Config.NODE_STORAGE_DIR, chunk_filename)
@@ -77,26 +108,27 @@ class StorageRepository:
         relative_visual_path = f"storage_data/{Config.SERVER_ID}/{chunk_filename}"
         now_str = datetime.now().isoformat(timespec="seconds")
 
-        # 2. Registra no Banco SQLite o endereço do Servidor Central Primário E do Servidor de Backup
+        # 2. Registra no Banco SQLite os metadados + o SHA-256 individual e composto
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO files (filename, original_size, total_parts, uploaded_by, timestamp)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO files (filename, original_size, total_parts, uploaded_by, timestamp, combined_file_sha256)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(filename) DO UPDATE SET
                     original_size=excluded.original_size,
                     total_parts=excluded.total_parts,
                     uploaded_by=excluded.uploaded_by,
-                    timestamp=excluded.timestamp
-            """, (original_filename, original_size, total_parts, client_id, now_str))
+                    timestamp=excluded.timestamp,
+                    combined_file_sha256=excluded.combined_file_sha256
+            """, (original_filename, original_size, total_parts, client_id, now_str, combined_file_sha256))
 
             cursor.execute("""
                 INSERT INTO file_chunks (
                     filename, part_number, chunk_filename, server_id,
                     server_grpc_address, chunk_size, saved_path,
-                    backup_server_address, backup_saved_path
+                    backup_server_address, backup_saved_path, chunk_sha256
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(filename, part_number) DO UPDATE SET
                     chunk_filename=excluded.chunk_filename,
                     server_id=excluded.server_id,
@@ -104,7 +136,8 @@ class StorageRepository:
                     chunk_size=excluded.chunk_size,
                     saved_path=excluded.saved_path,
                     backup_server_address=excluded.backup_server_address,
-                    backup_saved_path=excluded.backup_saved_path
+                    backup_saved_path=excluded.backup_saved_path,
+                    chunk_sha256=excluded.chunk_sha256
             """, (
                 original_filename,
                 part_number,
@@ -114,7 +147,8 @@ class StorageRepository:
                 len(content),
                 relative_visual_path,
                 backup_server_address,
-                backup_saved_path
+                backup_saved_path,
+                chunk_sha256
             ))
             conn.commit()
 
@@ -132,7 +166,7 @@ class StorageRepository:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT filename, original_size, total_parts, uploaded_by, timestamp FROM files WHERE filename = ?",
+                "SELECT filename, original_size, total_parts, uploaded_by, timestamp, combined_file_sha256 FROM files WHERE filename = ?",
                 (original_filename,)
             )
             row = cursor.fetchone()
@@ -141,7 +175,7 @@ class StorageRepository:
 
             cursor.execute("""
                 SELECT part_number, chunk_filename, server_id, server_grpc_address,
-                       chunk_size, saved_path, backup_server_address, backup_saved_path
+                       chunk_size, saved_path, backup_server_address, backup_saved_path, chunk_sha256
                 FROM file_chunks
                 WHERE filename = ?
                 ORDER BY part_number ASC
@@ -155,7 +189,8 @@ class StorageRepository:
                     chunk_size=c[4],
                     saved_path=c[5],
                     backup_server_address=c[6] or Config.BACKUP_SERVER_ADDRESS,
-                    backup_saved_path=c[7] or f"storage_data/server-backup/{c[1]}"
+                    backup_saved_path=c[7] or f"storage_data/server-backup/{c[1]}",
+                    chunk_sha256=c[8] or ""
                 )
                 for c in cursor.fetchall()
             ]
@@ -165,6 +200,7 @@ class StorageRepository:
                 total_parts=row[2],
                 uploaded_by=row[3],
                 timestamp=row[4],
+                combined_file_sha256=row[5] or "",
                 chunks=chunks
             )
 
@@ -185,6 +221,7 @@ class StorageRepository:
                 "total_parts": r.total_parts,
                 "uploaded_by": r.uploaded_by,
                 "timestamp": r.timestamp,
+                "combined_file_sha256": r.combined_file_sha256,
                 "chunks": [c.__dict__ for c in r.chunks]
             }
             for r in records
