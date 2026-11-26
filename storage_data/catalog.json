@@ -1,97 +1,33 @@
 [
   {
-    "filename": "FanControl_285_net_10_0_Installer.exe",
-    "original_size": 20894624,
+    "filename": "apresentacao-neo-grid-bold.html",
+    "original_size": 73927,
     "total_parts": 2,
     "uploaded_by": "guilherme",
-    "timestamp": "2026-11-23T21:49:23",
-    "combined_file_sha256": "ad6fa2292ff775ec207e229f156ec6e42255be306a986c77c3d0d854d1dc7f4d",
+    "timestamp": "2026-11-26T20:53:06",
+    "combined_file_sha256": "135a8f654ea9b91bd2d4d0c48a196cb1bdcf6a3c526577fef28465b02df11ac2",
     "chunks": [
       {
         "part_number": 1,
-        "chunk_filename": "FanControl_285_net_10_0_Installer.exe.part1",
+        "chunk_filename": "apresentacao-neo-grid-bold.html.part1",
         "server_id": "central-1",
         "server_grpc_address": "central-1:50051",
-        "chunk_size": 10447312,
-        "saved_path": "storage_data/central-1/FanControl_285_net_10_0_Installer.exe.part1",
+        "chunk_size": 36963,
+        "saved_path": "storage_data/central-1/apresentacao-neo-grid-bold.html.part1",
         "backup_server_address": "server-backup:50053",
-        "backup_saved_path": "storage_data/server-backup/FanControl_285_net_10_0_Installer.exe.part1",
-        "chunk_sha256": "121cb1a381bf5253afc804a2a167acba9f7dcb5faabd62b3a72897da7c6af881"
+        "backup_saved_path": "storage_data/server-backup/apresentacao-neo-grid-bold.html.part1",
+        "chunk_sha256": "6db69340c25e9ad90407b207e50a7fb35e3282a72aa279be28bf7ef538aa2cac"
       },
       {
         "part_number": 2,
-        "chunk_filename": "FanControl_285_net_10_0_Installer.exe.part2",
+        "chunk_filename": "apresentacao-neo-grid-bold.html.part2",
         "server_id": "central-2",
         "server_grpc_address": "central-2:50052",
-        "chunk_size": 10447312,
-        "saved_path": "storage_data/central-2/FanControl_285_net_10_0_Installer.exe.part2",
+        "chunk_size": 36964,
+        "saved_path": "storage_data/central-2/apresentacao-neo-grid-bold.html.part2",
         "backup_server_address": "server-backup:50053",
-        "backup_saved_path": "storage_data/server-backup/FanControl_285_net_10_0_Installer.exe.part2",
-        "chunk_sha256": "c14e79b6a288ebd65cee6fe225f8642dba8c6d2bf97314ba16f413ba4a91690e"
-      }
-    ]
-  },
-  {
-    "filename": "relatorio_sd.txt",
-    "original_size": 60,
-    "total_parts": 2,
-    "uploaded_by": "guilherme",
-    "timestamp": "2026-11-23T01:40:41",
-    "combined_file_sha256": "",
-    "chunks": [
-      {
-        "part_number": 1,
-        "chunk_filename": "relatorio_sd.txt.part1",
-        "server_id": "central-1",
-        "server_grpc_address": "central-1:50051",
-        "chunk_size": 30,
-        "saved_path": "storage_data/central-1/relatorio_sd.txt.part1",
-        "backup_server_address": "server-backup:50053",
-        "backup_saved_path": "storage_data/server-backup/relatorio_sd.txt.part1",
-        "chunk_sha256": ""
-      },
-      {
-        "part_number": 2,
-        "chunk_filename": "relatorio_sd.txt.part2",
-        "server_id": "central-2",
-        "server_grpc_address": "central-2:50052",
-        "chunk_size": 30,
-        "saved_path": "storage_data/central-2/relatorio_sd.txt.part2",
-        "backup_server_address": "server-backup:50053",
-        "backup_saved_path": "storage_data/server-backup/relatorio_sd.txt.part2",
-        "chunk_sha256": ""
-      }
-    ]
-  },
-  {
-    "filename": "Prolog (4).pdf",
-    "original_size": 81528,
-    "total_parts": 2,
-    "uploaded_by": "guilherme",
-    "timestamp": "2026-11-23T01:38:53",
-    "combined_file_sha256": "",
-    "chunks": [
-      {
-        "part_number": 1,
-        "chunk_filename": "Prolog (4).pdf.part1",
-        "server_id": "central-1",
-        "server_grpc_address": "central-1:50051",
-        "chunk_size": 40764,
-        "saved_path": "storage_data/central-1/Prolog (4).pdf.part1",
-        "backup_server_address": "server-backup:50053",
-        "backup_saved_path": "storage_data/server-backup/Prolog (4).pdf.part1",
-        "chunk_sha256": ""
-      },
-      {
-        "part_number": 2,
-        "chunk_filename": "Prolog (4).pdf.part2",
-        "server_id": "central-2",
-        "server_grpc_address": "central-2:50052",
-        "chunk_size": 40764,
-        "saved_path": "storage_data/central-2/Prolog (4).pdf.part2",
-        "backup_server_address": "server-backup:50053",
-        "backup_saved_path": "storage_data/server-backup/Prolog (4).pdf.part2",
-        "chunk_sha256": ""
+        "backup_saved_path": "storage_data/server-backup/apresentacao-neo-grid-bold.html.part2",
+        "chunk_sha256": "e3565018d1813fd736f9db5aad25a4c3598e043ded8eec775fe940fb42015c94"
       }
     ]
   }

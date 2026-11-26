@@ -6,11 +6,7 @@ from src.services.file_service import FileManagementService
 from src.services.token_ring_service import TokenRingService
 
 class FileGrpcController(storage_pb2_grpc.FileServiceServicer):
-    """
-    Camada Controller (Entrada gRPC nos Servidores Centrais):
-    Atende chamadas de cálculo distribuído de Hash SHA-256 nos workers,
-    gravação/leitura de fatias (Chunks) e consultas ao Banco de Metadados.
-    """
+    # Controller gRPC para operacoes de arquivo e chunks
     def __init__(self, file_service: FileManagementService):
         self.file_service = file_service
         self.server_id = Config.SERVER_ID
@@ -86,7 +82,7 @@ class FileGrpcController(storage_pb2_grpc.FileServiceServicer):
                 chunk_filename=request.chunk_filename,
                 content=b"",
                 handled_by=self.server_id,
-                message=f"Fatia '{request.chunk_filename}' não encontrada em {self.server_id}."
+                message=f"Fatia '{request.chunk_filename}' nao encontrada em {self.server_id}."
             )
         return storage_pb2.ChunkDownloadResponse(
             found=True,
@@ -119,7 +115,7 @@ class FileGrpcController(storage_pb2_grpc.FileServiceServicer):
 
 
 class TokenRingGrpcController(storage_pb2_grpc.TokenRingServiceServicer):
-    """Recebe o Token enviado pelo servidor central vizinho no anel lógico."""
+    # Recebe o Token passado pelo servidor vizinho
     def __init__(self, token_ring_service: TokenRingService):
         self.token_ring_service = token_ring_service
 

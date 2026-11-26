@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Distribuído de Arquivos Hospitalares — Neo-Grid Bold</title>
+
+    <!-- Google Fonts: Space Grotesk (400, 500, 700) & JetBrains Mono (400, 500) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* === CSS CUSTOM PROPERTIES (NEO-GRID BOLD THEME) === */
+        :root {
+            --paper: #F5F4EF;
+            --bg: #ECECE8;
+            --ink: #0A0A0A;
+            --accent-lemon: #E6FF3D;
+            --muted: #8A8A85;
+            --stage-bg: #1A1A1A;
+            --slide-bg: #ECECE8;
+
+            --font-display: 'Space Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --font-body: 'Space Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --duration-normal: 0.55s;
+        }
+
+        /* === RESET & BASE === */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            border-radius: 0;
+        }
+
+        /* === FIXED 16:9 STAGE: MANDATORY BASE STYLES (viewport-base.css) === */
+        /* 1. Lock the browser viewport */
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: var(--stage-bg, #000);
+            font-family: var(--font-body);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* 2. Full-window deck viewport */
+        .deck-viewport {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            background: var(--stage-bg, #000);
+        }
+
+        /* 3. Fixed 16:9 design canvas */
+        .deck-stage {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 1920px;
+            height: 1080px;
+            overflow: hidden;
+            transform-origin: 0 0;
+            background: var(--slide-bg, #fff);
+        }
+
+        /* 4. Slides stack inside the fixed stage */
+        .slide {
+            position: absolute;
+            inset: 0;
+            width: 1920px;
+            height: 1080px;
+            overflow: hidden;
+            display: block;
+            visibility: hidden;
+            opacity: 0;
+            pointer-events: none;
+            background: var(--slide-bg, #fff);
+            transition: opacity 0.35s ease;
+        }
+
+        .slide.active,
+        .slide.visible {
+            visibility: visible;
+            opacity: 1;
+            pointer-events: auto;
+            z-index: 1;
+        }
+
+        /* 5. Keep media inside authored slide bounds */
+        img,
+        video,
+        canvas,
+        svg {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        /* 6. Presentation chrome stays outside the slide design system */
+        .deck-controls {
+            position: fixed;
+            left: 50%;
+            bottom: 22px;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(10, 10, 10, 0.88);
+            border: 1px solid rgba(245, 244, 239, 0.2);
+            padding: 8px 16px;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--paper);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.25;
+            transition: opacity 0.25s ease;
+        }
+
+        .deck-controls:hover {
+            opacity: 1;
+        }
+
+        .deck-controls button {
+            background: transparent;
+            border: 1px solid rgba(245, 244, 239, 0.3);
+            color: var(--paper);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            padding: 4px 10px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .deck-controls button:hover {
+            background: var(--accent-lemon);
+            color: var(--ink);
+            border-color: var(--accent-lemon);
+        }
+
+        /* 7. Print one fixed-size slide per page */
+        @media print {
+            html,
+            body {
+                width: 1920px;
+                height: auto;
+                overflow: visible;
+                background: #fff;
+            }
+
+            .deck-viewport {
+                position: static;
+                overflow: visible;
+                background: #fff;
+            }
+
+            .deck-stage {
+                position: static;
+                width: auto;
+                height: auto;
+                transform: none !important;
+                background: none;
+            }
+
+            .slide {
+                position: relative;
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                pointer-events: auto !important;
+                width: 1920px;
+                height: 1080px;
+                break-after: page;
+                page-break-after: always;
+            }
+
+            .slide:last-child {
+                break-after: auto;
+                page-break-after: auto;
+            }
+
+            .deck-controls,
+            .edit-hotzone,
+            .edit-toggle,
+            .edit-toast {
+                display: none !important;
+            }
+        }
+
+        /* 8. Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.2s !important;
+            }
+        }
+
+        /* === UNIVERSAL 12x8 FRAME GRID === */
+        .frame {
+            position: absolute;
+            inset: 40px;
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            gap: 12px;
+        }
+
+        /* === PANEL SYSTEM (PAPER / INK / LEMON) === */
+        .card {
+            background: var(--paper);
+            color: var(--ink);
+            position: relative;
+            overflow: hidden;
+            padding: 28px 32px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .card.pad-sm { padding: 22px 26px; }
+        .card.pad-lg { padding: 36px 36px; }
+        .card.pad-xl { padding: 40px 44px; }
+
+        .card.ink {
+            background: var(--ink);
+            color: var(--paper);
+        }
+
+        .card.lemon {
+            background: var(--accent-lemon);
+            color: var(--ink);
+        }
+
+        /* === TYPOGRAPHY TOKENS === */
+        .t-display {
+            font-family: var(--font-display);
+            font-size: 108px;
+            font-weight: 700;
+            line-height: 0.92;
+            letter-spacing: -0.025em;
+            text-transform: uppercase;
+        }
+
+        .t-display-xl {
+            font-family: var(--font-display);
+            font-size: 128px;
+            font-weight: 700;
+            line-height: 0.90;
+            letter-spacing: -0.03em;
+            text-transform: uppercase;
+        }
+
+        .t-title {
+            font-family: var(--font-display);
+            font-size: 84px;
+            font-weight: 700;
+            line-height: 0.94;
+            letter-spacing: -0.02em;
+            text-transform: uppercase;
+        }
+
+        .t-subtitle {
+            font-family: var(--font-display);
+            font-size: 52px;
+            font-weight: 700;
+            line-height: 1.0;
+            letter-spacing: -0.015em;
+            text-transform: uppercase;
+        }
+
+        .t-section-num {
+            font-family: var(--font-display);
+            font-size: 320px;
+            font-weight: 700;
+            line-height: 0.85;
+            letter-spacing: -0.05em;
+        }
+
+        .t-stat-lg {
+            font-family: var(--font-display);
+            font-size: 220px;
+            font-weight: 700;
+            line-height: 0.85;
+            letter-spacing: -0.04em;
+        }
+
+        .t-stat {
+            font-family: var(--font-display);
+            font-size: 148px;
+            font-weight: 700;
+            line-height: 0.88;
+            letter-spacing: -0.03em;
+        }
+
+        .t-stat-sm {
+            font-family: var(--font-display);
+            font-size: 88px;
+            font-weight: 700;
+            line-height: 0.9;
+            letter-spacing: -0.03em;
+        }
+
+        .t-card-head {
+            font-family: var(--font-display);
+            font-size: 40px;
+            font-weight: 700;
+            line-height: 1.0;
+            letter-spacing: -0.01em;
+            text-transform: uppercase;
+        }
+
+        .t-card-h3 {
+            font-family: var(--font-display);
+            font-size: 29px;
+            font-weight: 700;
+            line-height: 1.06;
+            letter-spacing: -0.005em;
+            text-transform: uppercase;
+        }
+
+        .t-body {
+            font-family: var(--font-body);
+            font-size: 26px;
+            font-weight: 400;
+            line-height: 1.35;
+        }
+
+        .t-body-sm {
+            font-family: var(--font-body);
+            font-size: 21px;
+            font-weight: 400;
+            line-height: 1.42;
+        }
+
+        .t-label {
+            font-family: var(--font-mono);
+            font-size: 22px;
+            font-weight: 400;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .t-label-sm {
+            font-family: var(--font-mono);
+            font-size: 16px;
+            font-weight: 400;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .t-label-xs {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 400;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .muted-ink { opacity: 0.72; }
+        .muted-paper { opacity: 0.76; }
+
+        /* Headline emphasis mechanisms */
+        mark {
+            background: var(--accent-lemon);
+            color: var(--ink);
+            padding: 0 8px;
+        }
+
+        h1 em, h2 em, h3 em, .t-display em, .t-title em, .t-subtitle em, .t-card-head em {
+            color: var(--accent-lemon);
+            font-style: normal;
+        }
+
+        code.inline-code {
+            font-family: var(--font-mono);
+            font-size: 0.86em;
+            background: rgba(10, 10, 10, 0.08);
+            padding: 2px 6px;
+        }
+
+        .card.ink code.inline-code {
+            background: rgba(245, 244, 239, 0.14);
+        }
+
+        /* === SIGNATURE CHROME & DECORATIVE ELEMENTS === */
+        .pagenum {
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            background: var(--paper);
+            color: var(--ink);
+            padding: 14px 22px;
+            font-family: var(--font-mono);
+            font-size: 24px;
+            letter-spacing: 0.04em;
+            z-index: 10;
+        }
+
+        .pagenum.invert {
+            background: var(--ink);
+            color: var(--paper);
+        }
+
+        .pagenum.lemon {
+            background: var(--accent-lemon);
+            color: var(--ink);
+        }
+
+        /* 2x2 corner stamp: 3 filled + 1 transparent */
+        .corner-mark {
+            position: absolute;
+            top: 22px;
+            right: 22px;
+            width: 36px;
+            height: 36px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 4px;
+        }
+
+        .corner-mark span {
+            background: currentColor;
+            display: block;
+        }
+
+        .corner-mark span.empty {
+            background: transparent;
+        }
+
+        /* 2x2 diagonal blockmark */
+        .blockmark {
+            width: 64px;
+            height: 64px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+
+        .blockmark.lg {
+            width: 96px;
+            height: 96px;
+            gap: 6px;
+        }
+
+        .blockmark span {
+            background: currentColor;
+            display: block;
+        }
+
+        .blockmark span.empty {
+            background: transparent;
+        }
+
+        .blockmark span.lemon-sq {
+            background: var(--accent-lemon);
+        }
+
+        /* Decorative 5x5 QR-pattern tile */
+        .qr-tile {
+            width: 90px;
+            height: 90px;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            grid-template-rows: repeat(5, 1fr);
+            gap: 3px;
+            flex-shrink: 0;
+        }
+
+        .qr-tile span { background: transparent; }
+        .qr-tile span.on { background: var(--ink); }
+        .qr-tile span.lem { background: var(--accent-lemon); }
+
+        /* Wireframe comparison table */
+        .neo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .neo-table th {
+            background: var(--ink);
+            color: var(--paper);
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 400;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            text-align: left;
+            padding: 16px 20px;
+        }
+
+        .neo-table td {
+            padding: 16px 20px;
+            border-bottom: 1.5px solid var(--ink);
+            border-right: 1.5px solid var(--ink);
+            font-size: 22px;
+            line-height: 1.3;
+            vertical-align: middle;
+        }
+
+        .neo-table td:last-child {
+            border-right: none;
+        }
+
+        .neo-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Three-state rectangular pills */
+        .pill {
+            display: inline-block;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 6px 14px;
+            white-space: nowrap;
+        }
+
+        .pill-yes {
+            background: var(--accent-lemon);
+            color: var(--ink);
+        }
+
+        .pill-part {
+            background: var(--paper);
+            color: var(--ink);
+            border: 1.5px solid var(--ink);
+        }
+
+        .pill-no {
+            background: var(--ink);
+            color: var(--paper);
+        }
+
+        /* Code block inside card */
+        .code-panel {
+            font-family: var(--font-mono);
+            font-size: 17px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            letter-spacing: 0.01em;
+        }
+
+        /* === REVEAL ANIMATIONS === */
+        .reveal {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .slide.visible .reveal {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .slide.visible .d1 { transition-delay: 0.05s; }
+        .slide.visible .d2 { transition-delay: 0.12s; }
+        .slide.visible .d3 { transition-delay: 0.19s; }
+        .slide.visible .d4 { transition-delay: 0.26s; }
+        .slide.visible .d5 { transition-delay: 0.33s; }
+        .slide.visible .d6 { transition-delay: 0.40s; }
+
+        /* === INLINE EDITING UI === */
+        .edit-hotzone {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 80px;
+            height: 80px;
+            z-index: 10000;
+            cursor: pointer;
+        }
+
+        .edit-toggle {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            background: var(--ink);
+            color: var(--accent-lemon);
+            border: 1.5px solid var(--accent-lemon);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 8px 14px;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            z-index: 10001;
+        }
+
+        .edit-toggle.show,
+        .edit-toggle.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .edit-toggle.active {
+            background: var(--accent-lemon);
+            color: var(--ink);
+            border-color: var(--ink);
+        }
+
+        .edit-toast {
+            position: fixed;
+            top: 16px;
+            right: 20px;
+            background: var(--ink);
+            color: var(--accent-lemon);
+            border: 1.5px solid var(--accent-lemon);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 8px 14px;
+            z-index: 10002;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+
+        .edit-toast.show {
+            opacity: 1;
+        }
+
+        [data-editable="true"] {
+            outline: 1.5px dashed rgba(230, 255, 61, 0.8);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Inline Edit Controls -->
+    <div class="edit-hotzone" title="Modo de edição (E)"></div>
+    <button class="edit-toggle" id="editToggle" title="Alternar edição (E) | Salvar HTML (Ctrl+S)">EDITAR [E]</button>
+    <div class="edit-toast" id="editToast">Alterações salvas localmente</div>
+
+    <div class="deck-viewport">
+        <main class="deck-stage" id="deckStage">
+
+            <!-- ===================================================
+                 SLIDE 01: CAPA (COVER)
+                 =================================================== -->
+            <section class="slide active visible" aria-label="Slide 1: Capa">
+                <div class="frame">
+                    <!-- Top-left institutional stamp -->
+                    <div class="card ink reveal d1" style="grid-column: 1 / span 4; grid-row: 1 / span 2;">
+                        <div class="t-label-sm muted-paper">UFMT · INSTITUTO DE COMPUTAÇÃO</div>
+                        <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+                            <div class="t-card-h3">SISTEMAS DE<br>INFORMAÇÃO<br><em>DISTRIBUÍDOS</em></div>
+                            <div class="blockmark" style="color: var(--paper);">
+                                <span></span><span class="empty"></span>
+                                <span class="empty"></span><span class="lemon-sq"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Top-right evaluation & metadata -->
+                    <div class="card lemon reveal d2" style="grid-column: 5 / span 5; grid-row: 1 / span 2;">
+                        <div class="t-label-sm">PROJETO PRÁTICO · 3ª AVALIAÇÃO</div>
+                        <div class="t-subtitle" style="font-size: 44px;">ARMAZENAMENTO DISTRIBUÍDO DE EXAMES &amp; LAUDOS MÉDICOS</div>
+                    </div>
+
+                    <!-- Top-far-right QR decorative + stack -->
+                    <div class="card reveal d3" style="grid-column: 10 / span 3; grid-row: 1 / span 2;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div class="t-label-xs muted-ink">ARQUITETURA<br>4 NÓS DOCKER</div>
+                            <div class="qr-tile" aria-hidden="true">
+                                <span class="on"></span><span class="on"></span><span></span><span class="lem"></span><span class="on"></span>
+                                <span class="on"></span><span></span><span class="on"></span><span></span><span class="on"></span>
+                                <span></span><span class="lem"></span><span class="on"></span><span class="lem"></span><span></span>
+                                <span class="on"></span><span></span><span class="lem"></span><span></span><span class="on"></span>
+                                <span class="on"></span><span class="on"></span><span></span><span class="on"></span><span class="on"></span>
+                            </div>
+                        </div>
+                        <div class="t-label-sm">PYTHON 3.11 · FASTAPI · gRPC</div>
+                    </div>
+
+                    <!-- Hero Title Block -->
+                    <div class="card pad-xl reveal d2" style="grid-column: 1 / span 9; grid-row: 3 / span 4;">
+                        <div class="t-label muted-ink">DOMÍNIO HOSPITALAR &amp; TELEMEDICINA · LGPD</div>
+                        <h1 class="t-display">SISTEMA DISTRIBUÍDO DE <mark>ARQUIVOS</mark> HOSPITALARES</h1>
+                        <div class="t-body muted-ink" style="max-width: 1120px;">
+                            API Gateway Stateless com JWT, tradução REST → gRPC (Protobuf), sharding binário 50/50, deduplicação por soma SHA-256, Token Ring e failover automático.
+                        </div>
+                        <div class="corner-mark" aria-hidden="true">
+                            <span></span><span></span><span></span><span class="empty"></span>
+                        </div>
+                    </div>
+
+                    <!-- Right Accent Stat Column -->
+                    <div class="card ink reveal d4" style="grid-column: 10 / span 3; grid-row: 3 / span 4;">
+                        <div class="t-label-sm muted-paper">CONTAINERS ATIVOS</div>
+                        <div class="t-stat-lg" style="color: var(--accent-lemon);">04</div>
+                        <div class="t-body-sm muted-paper">
+                            <strong>edge-server</strong> (borda)<br>
+                            <strong>central-1</strong> &amp; <strong>central-2</strong><br>
+                            <strong>server-backup</strong> (failover)
+                        </div>
+                    </div>
+
+                    <!-- Bottom Authors & Professor -->
+                    <div class="card pad-sm reveal d5" style="grid-column: 1 / span 3; grid-row: 7 / span 2;">
+                        <div class="t-label-xs muted-ink">DOCENTE</div>
+                        <div class="t-card-h3">DIOGO HENRIQUE<br>DUARTE BEZERRA</div>
+                    </div>
+
+                    <div class="card pad-sm reveal d5" style="grid-column: 4 / span 6; grid-row: 7 / span 2;">
+                        <div class="t-label-xs muted-ink">DISCENTES</div>
+                        <div class="t-body" style="font-weight: 500;">
+                            Dirceu João de Souza Moraes · Guilherme Borges dos Santos<br>
+                            Guimel de Alencar Santana · Josué de Oliveira da Silva Jorge
+                        </div>
+                    </div>
+
+                    <div class="card lemon pad-sm reveal d6" style="grid-column: 10 / span 3; grid-row: 7 / span 2;">
+                        <div class="t-label-xs">REDE INTERNA</div>
+                        <div class="t-card-head" style="font-size: 34px;">SD_NETWORK<br>BRIDGE DOCKER</div>
+                    </div>
+                </div>
+                <div class="pagenum invert">01 / 10</div>
+            </section>
+
+            <!-- ===================================================
+                 SLIDE 02: CONTEXTO & MOTIVAÇÃO (SECTION DIVIDER + BRIEF)
+                 =================================================== -->
+            <section class="slide" aria-label="Slide 2: Contexto e Motivação">
+                <div class="frame">
+                    <!-- Huge Section Ordinal -->
+                    <div class="card lemon pad-xl reveal d1" style="grid-column: 1 / span 4; grid-row: 1 / span 6;">
+                        <div class="t-label">01 · INTRODUÇÃO</div>
+                        <div class="t-section-num">01</div>
+                        <div class="t-label-sm">INSPIRAÇÃO: GFS &amp; HDFS<br>CHUNKS + REPLICAÇÃO</div>
+                    </div>
+
+                    <!-- Main Statement -->
+                    <div class="card ink pad-xl reveal d2" style="grid-column: 5 / span 8; grid-row: 1 / span 4;">
+                        <div class="t-label muted-paper">CENÁRIO HOSPITALAR &amp; TELEMEDICINA</div>
+                        <h2 class="t-title">POR QUE SUPERAR A ARQUITETURA <em>MONOLÍTICA</em>?</h2>
+                        <div class="t-body muted-paper" style="max-width: 1050px;">
+                            Múltiplos médicos, laboratórios e unidades de pronto atendimento enviam e consultam exames de imagem e laudos em PDF simultaneamente — exigindo desempenho, sigilo (LGPD) e disponibilidade contínua em emergências.
+                        </div>
+                        <div class="corner-mark" aria-hidden="true">
+                            <span></span><span></span><span></span><span class="empty"></span>
+                        </div>
+                    </div>
+
+                    <!-- 3 Pillar Cards underneath -->
+                    <div class="card reveal d3" style="grid-column: 5 / span 4; grid-row: 5 / span 2;">
+                        <div class="t-label-xs muted-ink">PILAR 01 · SIGILO</div>
+                        <div class="t-card-h3">NENHUM NÓ TEM O EXAME COMPLETO</div>
+                        <div class="t-body-sm muted-ink">Fatiamento binário em 50% / 50% impede leitura isolada em caso de vazamento parcial.</div>
+                    </div>
+
+                    <div class="card reveal d4" style="grid-column: 9 / span 4; grid-row: 5 / span 2;">
+                        <div class="t-label-xs muted-ink">PILAR 02 · CONCORRÊNCIA</div>
+                        <div class="t-card-h3">ESCRITA SERIALIZADA &amp; LEITURA LIVRE</div>
+                        <div class="t-body-sm muted-ink">Exclusão mútua via Token Ring protege metadados sem travar downloads médicos.</div>
+                    </div>
+
+                    <!-- Bottom Row -->
+                    <div class="card ink pad-sm reveal d5" style="grid-column: 1 / span 4; grid-row: 7 / span 2;">
+                        <div class="t-label-xs muted-paper">CONTAINERIZAÇÃO</div>
+                        <div class="t-card-head" style="font-size: 36px;">DOCKER COMPOSE · 4 NÓS INDEPENDENTES</div>
+                    </div>
+
+                    <div class="card pad-sm reveal d5" style="grid-column: 5 / span 4; grid-row: 7 / span 2;">
+                        <div class="t-label-xs muted-ink">PILAR 03 · RESILIÊNCIA</div>
+                        <div class="t-card-h3">FAILOVER AUTOMÁTICO NA UTI</div>
+                        <div class="t-body-sm muted-ink">Réplica síncrona no <code class="inline-code">server-backup</code> garante remontagem mesmo com queda de nó central.</div>
+                    </div>
+
+                    <div class="card lemon pad-sm reveal d6" style="grid-column: 9 / span 4; grid-row: 7 / span 2;">
+                        <div class="t-label-xs">INTEGRAÇÃO DE CONCEITOS</div>
+                        <div class="t-card-head" style="font-size: 34px;">6 TÉCNICAS CLÁSSICAS EM PRODUÇÃO</div>
+                    </div>
+                </div>
+                <div class="pagenum invert">02 / 10</div>
+            </section>
+
+            <!-- ===================================================
+                 SLIDE 03: OS 5 PROBLEMAS CRÍTICOS
+                 =================================================== -->
+            <section class="slide" aria-label="Slide 3: Cinco Problemas Críticos">
+                <div class="frame">
+                    <!-- Header Banner -->
+                    <div class="card ink pad-lg reveal d1" style="grid-column: 1 / span 8; grid-row: 1 / span 2;">
+                        <div class="t-label-sm muted-paper">02 · APRESENTAÇÃO DO PROBLEMA (JUSTIFICATIVA)</div>
+                        <h2 class="t-subtitle" style="font-size: 56px;">CINCO <em>GARGALOS</em> CRÍTICOS RESOLVIDOS</h2>
+                    </div>
+
+                    <div class="card lemon pad-lg reveal d1" style="grid-column: 9 / span 4; grid-row: 1 / span 2;">
+                        <div class="t-label-xs">DIAGNÓSTICO DE RISCO</div>
+                        <div class="t-stat-sm">05 FALHAS</div>
+                    </div>
+
+                    <!-- Problem 2.1 -->
+                    <div class="card reveal d2" style="grid-column: 1 / span 4; grid-row: 3 / span 3;">
+                        <div class="t-label-sm muted-ink">2.1 · SOBRECARGA &amp; LGPD</div>
+                        <div class="t-card-h3">SERVIDOR ÚNICO &amp; PRIVACIDADE</div>
+                        <div class="t-body-sm muted-ink">
+                            PDFs e exames pesados saturam disco e rede de um nó único, além de expor o laudo completo do paciente se o disco for comprometido.
+                        </div>
+                        <div class="t-label-xs">SOLUÇÃO: SHARDING 50% / 50%</div>
+                    </div>
+
+                    <!-- Problem 2.2 -->
+                    <div class="card reveal d3" style="grid-column: 5 / span 4; grid-row: 3 / span 3;">
+                        <div class="t-label-sm muted-ink">2.2 · ESCALABILIDADE</div>
+                        <div class="t-card-h3">ESTADO DE SESSÃO EM MEMÓRIA</div>
+                        <div class="t-body-sm muted-ink">
+                            Sessões locais exigem <em>sticky sessions</em> e violam a escalabilidade horizontal. O gateway precisa validar profissionais sem guardar estado.
+                        </div>
+                        <div class="t-label-xs">SOLUÇÃO: JWT STATELESS (HS256)</div>
+                    </div>
+
+                    <!-- Problem 2.3 -->
+                    <div class="card ink reveal d4" style="grid-column: 9 / span 4; grid-row: 3 / span 3;">
+                        <div class="t-label-sm muted-paper">2.3 · CONCORRÊNCIA</div>
+                        <div class="t-card-h3"><em>RACE CONDITION</em> NA REGIÃO CRÍTICA</div>
+                        <div class="t-body-sm muted-paper">
+                            Threads paralelas gravando simultaneamente em <code class="inline-code">metadata_chunks.db</code> causam corrupção de ponteiros e <em>database lock</em>.
+                        </div>
+                        <div class="t-label-xs" style="color: var(--accent-lemon);">SOLUÇÃO: TOKEN RING DISTRIBUÍDO</div>
+                    </div>
+
+                    <!-- Problem 2.4 -->
+                    <div class="card lemon reveal d5" style="grid-column: 1 / span 6; grid-row: 6 / span 3;">
+                        <div class="t-label-sm">2.4 · INTEGRIDADE &amp; DEDUPLICAÇÃO</div>
+                        <div class="t-card-head" style="font-size: 36px;">REENVIO DUPLICADO &amp; FALSO POSITIVO EM FATIAS</div>
+                        <div class="t-body-sm">
+                            Validar apenas os primeiros 50% gera falso positivo: laudos distintos com o mesmo cabeçalho/logotipo hospitalar seriam bloqueados. Exige hash SHA-256 de ambas as metades combinadas.
+                        </div>
+                    </div>
+
+                    <!-- Problem 2.5 -->
+                    <div class="card reveal d6" style="grid-column: 7 / span 6; grid-row: 6 / span 3;">
+                        <div class="t-label-sm muted-ink">2.5 · ALTA DISPONIBILIDADE</div>
+                        <div class="t-card-head" style="font-size: 36px;">SINGLE POINT OF FAILURE NA UTI</div>
+                        <div class="t-body-sm muted-ink">
+                            Como cada exame é dividido entre <code class="inline-code">central-1</code> e <code class="inline-code">central-2</code>, a queda de um único container impediria a remontagem do arquivo original durante um atendimento de urgência.
+                        </div>
+                        <div class="corner-mark" aria-hidden="true">
+                            <span></span><span></span><span></span><span class="empty"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="pagenum invert">03 / 10</div>
+            </section>
+
+            <!-- ===================================================
+                 SLIDE 04: ARQUITETURA DOS 4 CONTAINERS
+                 =================================================== -->
+            <section class="slide" aria-label="Slide 4: Arquitetura dos 4 Containers">
+                <div class="frame">
+                    <!-- Title Row -->
+                    <div class="card pad-lg reveal d1" style="grid-column: 1 / span 9; grid-row: 1 / span 2;">
+                        <div class="t-label-sm muted-ink">04 · ARQUITETURA DA SOLUÇÃO · REDE BRIDGE SD_NETWORK</div>
+                        <h2 class="t-subtitle" style="font-size: 56px;">TOPOLOGIA DOS <mark>4 CONTAINERS</mark> DOCKER</h2>
+                    </div>
+
+                    <div class="card ink pad-lg reveal d1" style="grid-column: 10 / span 3; grid-row: 1 / span 2;">
+                        <div class="t-label-xs muted-paper">COMUNICAÇÃO INTERNA</div>
+                        <div class="t-card-head" style="font-size: 32px;">gRPC + <em>PROTOBUF</em><br>ATÉ 200 MB/FATIA</div>
+                    </div>
+
+                    <!-- Container 1: Edge Server -->
+                    <div class="card lemon reveal d2" style="grid-column: 1 / span 4; grid-row: 3 / span 4;">
+                        <div class="t-label-sm">CONTAINER 1 · PORTA 8080</div>
+                        <div class="t-card-head">EDGE-SERVER<br>(FASTAPI)</div>
+                        <div class="t-body-sm">
+                            • API Gateway REST + Swagger UI (<code class="inline-code">/docs</code>)<br>
+                            • Auth Stateless JWT (Bearer)<br>
+                            • Fatiamento binário (50% / 50%)<br>
+                            • Load Balancer Round-Robin<br>
+                            • Soma SHA-256 &amp; Failover
+                        </div>
+                        <div class="t-label-xs">ENTRADA: CLIENTE HTTP/1.1</div>
+                    </div>
+
+                    <!-- Container 2: Central 1 -->
+                    <div class="card ink reveal d3" style="grid-column: 5 / span 4; grid-row: 3 / span 2;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <div class="t-label-xs muted-paper">CONTAINER 2 · gRPC :50051</div>
+                            <div class="t-label-xs" style="color: var(--accent-lemon);">PARTE 1 (50%)</div>
+                        </div>
+                        <div class="t-card-h3">CENTRAL-1</div>
+                        <div class="t-body-sm muted-paper">
+                            Pool de 10 Worker Threads · SHA-256 (Parte 1) · Thread Token Ring · <code class="inline-code">storage_data/central-1</code>
+                        </div>
+                    </div>
+
+                    <!-- Container 3: Central 2 -->
+                    <div class="card ink reveal d4" style="grid-column: 5 / span 4; grid-row: 5 / span 2;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <div class="t-label-xs muted-paper">CONTAINER 3 · gRPC :50052</div>
+                            <div class="t-label-xs" style="color: var(--accent-lemon);">PARTE 2 (50%)</div>
+                        </div>
+                        <div class="t-card-h3">CENTRAL-2</div>
+                        <div class="t-body-sm muted-paper">
+                            Pool de 10 Worker Threads · SHA-256 (Parte 2) · Thread Token Ring · <code class="inline-code">storage_data/central-2</code>
+                        </div>
+                    </div>
+
+                    <!-- Critical Region: SQLite -->
+                    <div class="card reveal d5" style="grid-column: 9 / span 4; grid-row: 3 / span 4;">
+                        <div class="t-label-sm muted-ink">REGIÃO CRÍTICA COMPARTILHADA</div>
+                        <div class="t-card-head" style="font-size: 36px;">SQLITE<br>METADATA_CHUNKS.DB</div>
+                        <div class="t-body-sm muted-ink">
+                            Armazena apenas metadados e ponteiros:<br>
+                            • Tabela <code class="inline-code">files</code> (<code class="inline-code">combined_file_sha256</code>)<br>
+                            • Tabela <code class="inline-code">file_chunks</code> (nó primário + caminho de backup)<br>
+                            • Espelho <code class="inline-code">catalog.json</code>
+                        </div>
+                        <div class="t-label-xs">ESCRITA PROTEGIDA POR TOKEN RING</div>
+                    </div>
+
+                    <!-- Container 4: Server Backup (bottom span) -->
+                    <div class="card pad-sm reveal d6" style="grid-column: 1 / span 12; grid-row: 7 / span 2; flex-direction: row; align-items: center; gap: 40px;">
+                        <div style="min-width: 380px;">
+                            <div class="t-label-xs muted-ink">CONTAINER 4 · gRPC :50053 · ALTA DISPONIBILIDADE</div>
+                            <div class="t-card-head" style="font-size: 38px;">SERVER-BACKUP</div>
+                        </div>
+                        <div class="t-body" style="flex: 1;">
+                            Recebe cópias síncronas via <code class="inline-code">ReplicateChunk</code> das fatias <code class="inline-code">.part1</code> e <code class="inline-code">.part2</code> em <code class="inline-code">storage_data/server-backup/</code> e responde ao <code class="inline-code">GetChunk</code> em caso de failover.
+                        </div>
+                        <div class="pill pill-yes">REDUNDÂNCIA SÍNCRONA</div>
+                    </div>
+                </div>
+                <div class="pagenum invert">04 / 10</div>
+            </section>
+
+            <!-- ===================================================
+                 SLIDE 05: BORDA STATELESS (JWT + REST -> gRPC)
+                 =================================================== -->
+            <section class="slide" aria-label="Slide 5: Borda Stateless e Tradução de Protocolos">
+                <div class="frame">
+                    <div class="card ink pad-lg reveal d1" style="grid-column: 1 / span 7; grid-row: 1 / span 3;">
+                        <div class="t-label-sm muted-paper">03 · METODOLOGIA · CAMADA DE BORDA</div>
+                        <h2 class="t-title" style="font-size: 72px;">BORDA <em>STATELESS</em> &amp; TRADUÇÃO</h2>
+                        <div class="t-body-sm muted-paper">
+                            Desacoplamento total entre clientes externos (navegadores, Swagger UI, scripts HTTP) e a malha binária interna.
+                        </div>
+                    </div>
+
+                    <div class="card lemon pad-lg reveal d2" style="grid-column: 8 / span 5; grid-row: 1 / span 3;">
+                        <div class="t-label-sm">LIMITE DE TRANSPORTE PROTOBUF</div>
+                        <div class="t-stat" style="font-size: 132px;">200 MB</div>
+                        <div class="t-label-sm">POR FATIA BINÁRIA VIA gRPC HTTP/2</div>
+                    </div>
+
+                    <!-- JWT Card -->
+                    <div class="card reveal d3" style="grid-column: 1 / span 6; grid-row: 4 / span 3;">
+                        <div class="t-label-sm muted-ink">1. AUTENTICAÇÃO STATELESS (PYJWT)</div>
+                        <div class="t-card-head" style="font-size: 36px;">JWT HS256 SEM SESSÃO EM MEMÓRIA</div>
+                        <div class="t-body-sm muted-ink">
+                            • Login em <code class="inline-code">POST /api/auth/login</code> gera token assinado com <code class="inline-code">sub</code> (identidade) e <code class="inline-code">exp</code> (expiração).<br>
+                            • Upload, listagem e download validam apenas a assinatura no cabeçalho <code class="inline-code">Authorization: Bearer</code>.
+                        </div>
+                        <div class="corner-mark" aria-hidden="true">
+                            <span></span><span></span><span></span><span class="empty"></span>
+                        </div>
+                    </div>
+
+                    <!-- REST -> gRPC Translation Card -->
+                    <div class="card reveal d4" style="grid-column: 7 / span 6; grid-row: 4 / span 3;">
+                        <div class="t-label-sm muted-ink">2. TRADUÇÃO DE PROTOCOLO</div>
+                        <div class="t-card-head" style="font-size: 36px;">HTTP/1.1 REST → HTTP/2 gRPC</div>
+                        <div class="t-body-sm muted-ink">
+                            • Borda: compatibilidade universal via FastAPI (<code class="inline-code">auth_routes.py</code>, <code class="inline-code">file_routes.py</code>).<br>
+                            • Rede interna: contratos formais em <code class="inline-code">proto/storage.proto</code> com serialização binária Protocol Buffers.
+                        </div>
+                    </div>
+
+                    <!-- Bottom Protocol Contract Strip -->
+                    <div class="card ink pad-sm reveal d5" style="grid-column: 1 / span 12; grid-row: 7 / span 2; flex-direction: row; align-items: center; justify-content: space-between;">
+                        <div>
+                            <div class="t-label-xs muted-paper">CONTRATO PROTOBUF · STORAGE.PROTO</div>
+                            <div class="t-card-h3" style="margin-top: 6px;">FILESERVICE &amp; TOKENRINGSERVICE</div>
+                        </div>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            <span class="pill pill-yes">ComputeChunkHash</span>
+                            <span class="pill pill-yes">SaveChunk</span>
+                            <span class="pill pill-yes">ReplicateChunk</span>
+                            <span class="pill pill-yes">GetChunk</span>
+                            <span class="pill pill-part">GetFileMap</span>
+                            <span class="pill pill-part">PassToken</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="pagenum invert">05 / 10</div>
+            </section>
+
+            <!-- ===================================================
+                 SLIDE 06: SHARDING BINÁRIO & ROUND-ROBIN
+                 =================================================== -->
+            <section class="slide" aria-label="Slide 6: Sharding Binário e Balanceamento Round-Robin">
+                <div class="frame">
+                    <div class="card pad-lg reveal d1" style="grid-column: 1 / span 8; grid-row: 1 / span 3;">
+                        <div class="t-label-sm muted-ink">03 · METODOLOGIA · FRAGMENTAÇÃO &amp; DISTRIBUIÇÃO</div>
+                        <h2 class="t-title" style="font-size: 72px;"><mark>SHARDING</mark> BINÁRIO &amp; ROUND-ROBIN</h2>
+                        <div class="t-body-sm muted-ink">
+                            Divisão exata do fluxo de bytes no <code class="inline-code">edge_gateway_service.py</code> combinada com distribuição circular em <code class="inline-code">load_balancer_service.py</code>.
+                        </div>
+                    </div>
+
+                    <div class="card lemon pad-lg reveal d2" style="grid-column: 9 / span 4; grid-row: 1 / span 3;">
+                        <div class="t-label-sm">DIVISÃO POR EXAME</div>
+                        <div class="t-stat" style="font-size: 124px;">50/50</div>
+                        <div class="t-label-xs">PONTO MÉDIO ⌊N/2⌋ BYTES</div>
+                    </div>
+
+                    <!-- Byte Slicing Visual Flow -->
+                    <div class="card ink reveal d3" style="grid-column: 1 / span 7; grid-row: 4 / span 3;">
+                        <div class="t-label-sm muted-paper">BYTE SLICING NO EDGE-SERVER</div>
+                        <div class="code-panel" style="color: var(--paper);">original_size = len(content)
+midpoint = original_size // 2
+
+<span style="color: var(--accent-lemon);">part1_bytes = content[:midpoint]</span>  # → .part1 (central-1)
+<span style="color: var(--accent-lemon);">part2_bytes = content[midpoint:]</span>  # → .part2 (central-2)</div>
+                        <div class="t-body-sm muted-paper">
+                            Uma fatia binária isolada (<code class="inline-code">.part1</code>) é ilegível por si só — proteção nativa ao sigilo do paciente.
+                        </div>
+                    </div>
+
+                    <!-- Round-Robin Card -->
+                    <div class="card reveal d4" style="grid-column: 8 / span 5; grid-row: 4 / span 3;">
+                        <div class="t-label-sm muted-ink">BALANCEAMENTO DE CARGA</div>
+                        <div class="t-card-head" style="font-size: 36px;">ROUND-ROBIN COM THREADING.LOCK</div>
+                        <div class="t-body-sm muted-ink">
+                            O ponteiro de seleção é protegido por exclusão mútua local (<code class="inline-code">threading.Lock</code>), alternando circularmente entre <code class="inline-code">central-1:50051</code> e <code class="inline-code">central-2:50052</code> para distribuir custo de rede e disco.
+                        </div>
+                        <div class="corner-mark" aria-hidden="true">
+                            <span></span><span></span><span></span><span class="empty"></span>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Summary -->
+                    <div class="card pad-sm reveal d5" style="grid-column: 1 / span 6; grid-row: 7 / span 2;">
+                        <div class="t-label-xs muted-ink">DIRETÓRIO EXCLUSIVO NÓ 1</div>
+                        <div class="t-card-h3">STORAGE_DATA/CENTRAL-1/ (.PART1)</div>
+                    </div>
+
+                    <div class="card ink pad-sm reveal d6" style="grid-column: 7 / span 6; grid-row: 7 / span 2;">
+                        <div class="t-label-xs muted-paper">DIRETÓRIO EXCLUSIVO NÓ 2</div>
+                        <div class="t-card-h3" style="color: var(--accent-lemon);">STORAGE_DATA/CENTRAL-2/ (.PART2)</div>
+                    </div>
+                </div>
+                <div class="pagenum invert">06 / 10</div>
+            </section>
+
+            <!-- ===================================================
+                 SLIDE 07: DEDUPLICAÇÃO DISTRIBUÍDA SHA-256
+                 =================================================== -->
+            <section class="slide" aria-label="Slide 7: Deduplicação Distribuída via SHA-256">
+                <div class="frame">
+                    <div class="card ink pad-lg reveal d1" style="grid-column: 1 / span 12; grid-row: 1 / span 2; flex-direction: row; align-items: center; justify-content: space-between;">
+                        <div>
+                            <div class="t-label-xs muted-paper">04 · VALIDAÇÃO DISTRIBUÍDA DE DUPLICIDADE</div>
+                            <h2 class="t-subtitle" style="font-size: 58px;">SOMA DE HASHES <em>SHA-256</em> NOS WORKERS</h2>
+                        </div>
+                        <div class="t-label" style="color: var(--accent-lemon);">THREADPOOLEXECUTOR PARALELO</div>
+                    </div>
+
+                    <!-- Step 1 & 2 Parallel Workers -->
+                    <div class="card reveal d2" style="grid-column: 1 / span 4; grid-row: 3 / span 3;">
+                        <div class="t-label-sm muted-ink">ETAPA 1 · WORKER CENTRAL-1</div>
+                        <div class="t-card-head" style="font-size: 34px;">H1 = SHA256(PARTE 1)</div>
+                        <div class="t-body-sm muted-ink">
+                            Acionado via <code class="inline-code">ComputeChunkHash</code> antes de qualquer escrita em disco.
+                        </div>
+                    </div>
+
+                    <div class="card reveal d3" style="grid-column: 5 / span 4; grid-row: 3 / span 3;">
+                        <div class="t-label-sm muted-ink">ETAPA 2 · WORKER CENTRAL-2</div>
+                        <div class="t-card-head" style="font-size: 34px;">H2 = SHA256(PARTE 2)</div>
+                        <div class="t-body-sm muted-ink">
+                            Executado simultaneamente em paralelo pela <code class="inline-code">Worker Thread</code> do segundo nó.
+                        </div>
+                    </div>
+
+                    <!-- Step 3 Combined Hash -->
+                    <div class="card lemon reveal d4" style="grid-column: 9 / span 4; grid-row: 3 / span 3;">
+                        <div class="t-label-sm">ETAPA 3 · HASH COMPOSTO</div>
+                        <div class="t-card-head" style="font-size: 32px;">H_COMP = SHA256(H1 : H2)</div>
+                        <div class="code-panel" style="font-size: 15px;">combined_raw = f"{part1_hash}:{part2_hash}"
+combined_file_sha256 = sha256(combined_raw)</div>
+                    </div>
+
+                    <!-- Comparison Matrix Table -->
+                    <div class="card pad-sm reveal d5" style="grid-column: 1 / span 12; grid-row: 6 / span 3; justify-content: center;">
+                        <table class="neo-table">
+                            <thead>
+                                <tr>
+                                    <th>CENÁRIO DE UPLOAD</th>
+                                    <th>PARTE 1 (H1)</th>
+                                    <th>PARTE 2 (H2)</th>
+                                    <th>HASH COMPOSTO</th>
+                                    <th>DECISÃO DO SISTEMA</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Laudos distintos com cabeçalho PDF igual (50%)</strong></td>
+                                    <td>Igual</td>
+                                    <td>Diferente</td>
+                                    <td>Distinto</td>
+                                    <td><span class="pill pill-yes">PERMITIDO · 200 OK</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Reenvio acidental do mesmo exame (100% igual)</strong></td>
+                                    <td>Igual</td>
+                                    <td>Igual</td>
+                                    <td>Idêntico no SQLite</td>
+                                    <td><span class="pill pill-no">BLOQUEADO · 409 CONFLICT</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="pagenum invert">07 / 10</div>
+            </section>
+
+            <!-- ===================================================
+                 SLIDE 08: EXCLUSÃO MÚTUA (TOKEN RING)
+                 =================================================== -->
+            <section class="slide" aria-label="Slide 8: Exclusão Mútua Distribuída com Token Ring">
+                <div class="frame">
+                    <!-- Header -->
+                    <div class="card lemon pad-lg reveal d1" style="grid-column: 1 / span 7; grid-row: 1 / span 3;">
+                        <div class="t-label-sm">05 · CONTROLE DE CONCORRÊNCIA</div>
+                        <h2 class="t-title" style="font-size: 72px;">EXCLUSÃO MÚTUA <br>TOKEN RING</h2>
+                        <div class="t-body-sm">
+                            Anel lógico entre <code class="inline-code">central-1</code> e <code class="inline-code">central-2</code> com circulação contínua via <code class="inline-code">PassToken</code> gRPC em thread dedicada.
+                        </div>
+                    </div>
+
+                    <!-- Code Snippet Card -->
+                    <div class="card ink pad-lg reveal d2" style="grid-column: 8 / span 5; grid-row: 1 / span 3;">
+                        <div class="t-label-xs muted-paper">TOKEN_RING_SERVICE.PY · THREADING.CONDITION</div>
+                        <div class="code-panel" style="font-size: 16px; color: var(--paper);">with self.condition:
+    self.waiting_writers += 1
+    while not self.has_token or self.in_critical_section:
+        self.condition.wait()
+    self.waiting_writers -= 1
+    self.in_critical_section = True</div>
+                    </div>
+
+                    <!-- Read vs Write Behavior -->
+                    <div class="card reveal d3" style="grid-column: 1 / span 4; grid-row: 4 / span 3;">
+                        <div class="t-label-sm muted-ink">OPERAÇÕES DE LEITURA</div>
+                        <div class="t-card-head" style="font-size: 34px;">DOWNLOAD &amp; LISTAGEM</div>
+                        <div class="t-body-sm muted-ink">
+                            Não alteram estado. São executadas imediatamente em paralelo pelos workers, sem aguardar a posse do Token.
+                        </div>
+                        <span class="pill pill-yes" style="align-self: flex-start;">SEM BLOQUEIO</span>
+                    </div>
+
+                    <div class="card reveal d4" style="grid-column: 5 / span 4; grid-row: 4 / span 3;">
+                        <div class="t-label-sm muted-ink">OPERAÇÕES DE ESCRITA</div>
+                        <div class="t-card-head" style="font-size: 34px;">SAVECHUNK NA REGIÃO CRÍTICA</div>
+                        <div class="t-body-sm muted-ink">
+                            Com o Token: verifica <code class="inline-code">H_composto</code> no SQLite, grava fatia, replica no backup, registra ponteiros e libera o anel.
+                        </div>
+                        <span class="pill pill-no" style="align-self: flex-start;">ACESSO SERIALIZADO</span>
+                    </div>
+
+                    <!-- Self-Healing Card -->
+                    <div class="card ink reveal d5" style="grid-column: 9 / span 4; grid-row: 4 / span 3;">
+                        <div class="t-label-sm" style="color: var(--accent-lemon);">RESILIÊNCIA DO ANEL</div>
+                        <div class="t-card-head" style="font-size: 34px;">SELF-HEALING AUTOMÁTICO</div>
+                        <div class="t-body-sm muted-paper">
+                            Caso um dos servidores centrais caia, o nó sobrevivente detecta a falha na chamada <code class="inline-code">PassToken</code> e retém o Token localmente para não travar o cluster.
+                        </div>
+                    </div>
+
+                    <!-- Bottom Banner -->
+                    <div class="card pad-sm reveal d6" style="grid-column: 1 / span 12; grid-row: 7 / span 2; flex-direction: row; align-items: center; justify-content: space-between;">
+                        <div class="t-card-h3">ZERO CORRUPÇÃO NO <code class="inline-code">METADATA_CHUNKS.DB</code></div>
+                        <div class="t-body-sm muted-ink">Fila justa de escritores (<code class="inline-code">waiting_writers</code>) + <code class="inline-code">notify_all()</code> na saída da Região Crítica.</div>
+                    </div>
+                </div>
+                <div class="pagenum invert">08 / 10</div>
+            </section>
+
+            <!-- ===================================================
+                 SLIDE 09: REPLICAÇÃO & FAILOVER AUTOMÁTICO
+                 =================================================== -->
+            <section class="slide" aria-label="Slide 9: Replicação e Failover Automático">
+                <div class="frame">
+                    <div class="card ink pad-xl reveal d1" style="grid-column: 1 / span 8; grid-row: 1 / span 3;">
+                        <div class="t-label-sm muted-paper">06 · TOLERÂNCIA A FALHAS</div>
+                        <h2 class="t-title" style="font-size: 74px;">REPLICAÇÃO &amp; <em>FAILOVER</em></h2>
+                        <div class="t-body-sm muted-paper">
+                            Garantia de recuperação integral de exames e laudos mesmo diante da queda completa de um servidor central.
+                        </div>
+                    </div>
+
+                    <div class="card lemon pad-lg reveal d2" style="grid-column: 9 / span 4; grid-row: 1 / span 3;">
+                        <div class="t-label-sm">DISPONIBILIDADE NA REMONTAGEM</div>
+                        <div class="t-stat" style="font-size: 132px;">100%</div>
+                    </div>
+
+                    <!-- 3-step horizontal flow -->
+                    <div class="card reveal d3" style="grid-column: 1 / span 4; grid-row: 4 / span 3;">
+                        <div class="t-label-sm muted-ink">PASSO 01 · ESCRITA SÍNCRONA</div>
+                        <div class="t-card-head" style="font-size: 34px;">REPLICATECHUNK</div>
+                        <div class="t-body-sm muted-ink">
+                            Dentro da Região Crítica, <code class="inline-code">central-1</code> e <code class="inline-code">central-2</code> enviam cópia síncrona das fatias para <code class="inline-code">server-backup:50053</code>.
+                        </div>
+                    </div>
+
+                    <div class="card reveal d4" style="grid-column: 5 / span 4; grid-row: 4 / span 3;">
+                        <div class="t-label-sm muted-ink">PASSO 02 · DETECÇÃO DE FALHA</div>
+                        <div class="t-card-head" style="font-size: 34px;">GRPC.RPCERROR</div>
+                        <div class="t-body-sm muted-ink">
+                            No download, o <code class="inline-code">edge-server</code> consulta <code class="inline-code">GetFileMap</code> e tenta <code class="inline-code">GetChunk</code> nos primários. Se um nó falhar, captura <code class="inline-code">RpcError</code>.
+                        </div>
+                    </div>
+
+                    <div class="card ink reveal d5" style="grid-column: 9 / span 4; grid-row: 4 / span 3;">
+                        <div class="t-label-sm" style="color: var(--accent-lemon);">PASSO 03 · REASSEMBLY</div>
+                        <div class="t-card-head" style="font-size: 34px;">RECUPERAÇÃO EM MEMÓRIA</div>
+                        <div class="t-body-sm muted-paper">
+                            A fatia faltante é buscada no <code class="inline-code">server-backup</code>, remontada (<code class="inline-code">Parte 1 + Parte 2</code>) e entregue íntegra ao médico.
+                        </div>
+                    </div>
+
+                    <!-- Bottom highlight -->
+                    <div class="card lemon pad-sm reveal d6" style="grid-column: 1 / span 12; grid-row: 7 / span 2; flex-direction: row; align-items: center; justify-content: space-between;">
+                        <div class="t-card-head" style="font-size: 34px;">TRANSPARÊNCIA TOTAL PARA O CLIENTE REST</div>
+                        <div class="t-body">O médico solicita <code class="inline-code">GET /api/download/{filename}</code> e recebe o PDF íntegro sem perceber a pane.</div>
+                    </div>
+                </div>
+                <div class="pagenum invert">09 / 10</div>
+            </section>
+
+            <!-- ===================================================
+                 SLIDE 10: VALIDAÇÃO, TESTES & CONCLUSÃO
+                 =================================================== -->
+            <section class="slide" aria-label="Slide 10: Validação e Conclusão">
+                <div class="frame">
+                    <!-- Header -->
+                    <div class="card ink pad-lg reveal d1" style="grid-column: 1 / span 8; grid-row: 1 / span 2;">
+                        <div class="t-label-sm muted-paper">5.3 &amp; 06 · ROTEIRO DE TESTES &amp; CONCLUSÃO</div>
+                        <h2 class="t-subtitle" style="font-size: 56px;">VALIDAÇÃO VIA <em>SWAGGER UI</em> &amp; DOCKER</h2>
+                    </div>
+
+                    <div class="card lemon pad-lg reveal d1" style="grid-column: 9 / span 4; grid-row: 1 / span 2;">
+                        <div class="t-label-xs">ENDPOINT DE TESTES</div>
+                        <div class="t-card-head" style="font-size: 32px;">LOCALHOST:8080/DOCS</div>
+                    </div>
+
+                    <!-- 4 Validation Tests -->
+                    <div class="card pad-sm reveal d2" style="grid-column: 1 / span 3; grid-row: 3 / span 3;">
+                        <div class="t-label-xs muted-ink">TESTE 01</div>
+                        <div class="t-card-h3">JWT STATELESS</div>
+                        <div class="t-body-sm muted-ink">Geração de token em <code class="inline-code">/api/auth/login</code> e autorização Bearer no Swagger.</div>
+                        <span class="pill pill-yes" style="align-self: flex-start;">APROVADO</span>
+                    </div>
+
+                    <div class="card pad-sm reveal d3" style="grid-column: 4 / span 3; grid-row: 3 / span 3;">
+                        <div class="t-label-xs muted-ink">TESTE 02</div>
+                        <div class="t-card-h3">SHARDING &amp; RING</div>
+                        <div class="t-body-sm muted-ink">PDFs reais gravados como <code class="inline-code">.part1</code> e <code class="inline-code">.part2</code> + réplica e SQLite sem conflito.</div>
+                        <span class="pill pill-yes" style="align-self: flex-start;">APROVADO</span>
+                    </div>
+
+                    <div class="card pad-sm reveal d4" style="grid-column: 7 / span 3; grid-row: 3 / span 3;">
+                        <div class="t-label-xs muted-ink">TESTE 03</div>
+                        <div class="t-card-h3">SOMA SHA-256</div>
+                        <div class="t-body-sm muted-ink">Duplicata exata retorna <code class="inline-code">409 Conflict</code>; 50% igual é aceito normalmente.</div>
+                        <span class="pill pill-yes" style="align-self: flex-start;">APROVADO</span>
+                    </div>
+
+                    <div class="card ink pad-sm reveal d5" style="grid-column: 10 / span 3; grid-row: 3 / span 3;">
+                        <div class="t-label-xs" style="color: var(--accent-lemon);">TESTE 04 · CAOS</div>
+                        <div class="t-card-h3">DOCKER STOP CENTRAL-2</div>
+                        <div class="t-body-sm muted-paper">Download recuperou Parte 1 do <code class="inline-code">central-1</code> e Parte 2 do <code class="inline-code">server-backup</code> sem perda.</div>
+                        <span class="pill pill-yes" style="align-self: flex-start;">FAILOVER OK</span>
+                    </div>
+
+                    <!-- Final Conclusion Block -->
+                    <div class="card lemon pad-lg reveal d6" style="grid-column: 1 / span 9; grid-row: 6 / span 3;">
+                        <div class="t-label-sm">CONCLUSÃO DO PROJETO</div>
+                        <div class="t-card-head" style="font-size: 36px;">DESACOPLAMENTO, PRIVACIDADE &amp; RESILIÊNCIA</div>
+                        <div class="t-body">
+                            A arquitetura em 4 containers demonstrou na prática a integração de REST/JWT na borda, gRPC/Protobuf interno, Sharding 50/50 com Round-Robin, deduplicação por soma SHA-256, Token Ring e replicação síncrona com failover automático.
+                        </div>
+                    </div>
+
+                    <div class="card ink pad-lg reveal d6" style="grid-column: 10 / span 3; grid-row: 6 / span 3; align-items: flex-start;">
+                        <div class="blockmark lg" style="color: var(--paper);">
+                            <span></span><span class="empty"></span>
+                            <span class="empty"></span><span class="lemon-sq"></span>
+                        </div>
+                        <div class="t-card-h3" style="color: var(--accent-lemon);">OBRIGADO!<br>UFMT · IC</div>
+                    </div>
+                </div>
+                <div class="pagenum invert">10 / 10</div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Navigation Chrome Outside Stage -->
+    <nav class="deck-controls" aria-label="Controles da apresentação">
+        <button id="prevBtn" type="button" aria-label="Slide anterior">← Ant</button>
+        <span id="slideCounter">01 / 10</span>
+        <button id="nextBtn" type="button" aria-label="Próximo slide">Próx →</button>
+    </nav>
+
+    <script>
+        /* === SLIDE PRESENTATION CONTROLLER === */
+        class SlidePresentation {
+            constructor() {
+                this.slides = Array.from(document.querySelectorAll('.slide'));
+                this.currentSlide = 0;
+                this.stage = document.getElementById('deckStage');
+                this.counter = document.getElementById('slideCounter');
+                this.wheelLocked = false;
+
+                this.setupStageScale();
+                this.setupKeyboardNav();
+                this.setupTouchNav();
+                this.setupWheelNav();
+                this.setupButtons();
+                this.showSlide(0);
+            }
+
+            setupStageScale() {
+                const scale = () => {
+                    const factor = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+                    const x = (window.innerWidth - 1920 * factor) / 2;
+                    const y = (window.innerHeight - 1080 * factor) / 2;
+                    this.stage.style.transform = `translate(${x}px, ${y}px) scale(${factor})`;
+                };
+                scale();
+                window.addEventListener('resize', scale);
+            }
+
+            setupKeyboardNav() {
+                document.addEventListener('keydown', (e) => {
+                    if (e.target.getAttribute('contenteditable') === 'true') return;
+                    if (['ArrowRight', 'ArrowDown', ' ', 'PageDown'].includes(e.key)) {
+                        e.preventDefault();
+                        this.next();
+                    } else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) {
+                        e.preventDefault();
+                        this.prev();
+                    } else if (e.key === 'Home') {
+                        e.preventDefault();
+                        this.showSlide(0);
+                    } else if (e.key === 'End') {
+                        e.preventDefault();
+                        this.showSlide(this.slides.length - 1);
+                    }
+                });
+            }
+
+            setupTouchNav() {
+                let startX = 0;
+                document.addEventListener('touchstart', (e) => {
+                    startX = e.touches[0].clientX;
+                }, { passive: true });
+                document.addEventListener('touchend', (e) => {
+                    const diff = startX - e.changedTouches[0].clientX;
+                    if (Math.abs(diff) > 50) {
+                        diff > 0 ? this.next() : this.prev();
+                    }
+                }, { passive: true });
+            }
+
+            setupWheelNav() {
+                document.addEventListener('wheel', (e) => {
+                    if (this.wheelLocked) return;
+                    if (Math.abs(e.deltaY) > 25) {
+                        this.wheelLocked = true;
+                        e.deltaY > 0 ? this.next() : this.prev();
+                        setTimeout(() => { this.wheelLocked = false; }, 450);
+                    }
+                }, { passive: true });
+            }
+
+            setupButtons() {
+                document.getElementById('prevBtn').addEventListener('click', () => this.prev());
+                document.getElementById('nextBtn').addEventListener('click', () => this.next());
+            }
+
+            next() {
+                this.showSlide(this.currentSlide + 1);
+            }
+
+            prev() {
+                this.showSlide(this.currentSlide - 1);
+            }
+
+            showSlide(index) {
+                this.currentSlide = Math.max(0, Math.min(index, this.slides.length - 1));
+                this.slides.forEach((slide, i) => {
+                    const isCurrent = i === this.currentSlide;
+                    slide.classList.toggle('active', isCurrent);
+                    slide.classList.toggle('visible', isCurrent);
+                });
+                const pad = String(this.currentSlide + 1).padStart(2, '0');
+                const total = String(this.slides.length).padStart(2, '0');
+                if (this.counter) this.counter.textContent = `${pad} / ${total}`;
+            }
+        }
+
+        /* === INLINE EDITOR (HOVER HOTZONE + E KEY + LOCALSTORAGE + CTRL+S) === */
+        class InlineEditor {
+            constructor() {
+                this.isActive = false;
+                this.storageKey = 'neo_grid_bold_sd_slides_v1';
+                this.editToggle = document.getElementById('editToggle');
+                this.toast = document.getElementById('editToast');
+                this.editableSelectors = 'h1, h2, .t-card-head, .t-card-h3, .t-body, .t-body-sm, .t-label, .t-label-sm, .t-label-xs, .t-stat, .t-stat-sm, .t-stat-lg, td, th';
+                this.restoreSaved();
+                this.bindEvents();
+            }
+
+            bindEvents() {
+                const hotzone = document.querySelector('.edit-hotzone');
+                let hideTimeout = null;
+
+                hotzone.addEventListener('mouseenter', () => {
+                    clearTimeout(hideTimeout);
+                    this.editToggle.classList.add('show');
+                });
+                hotzone.addEventListener('mouseleave', () => {
+                    hideTimeout = setTimeout(() => {
+                        if (!this.isActive) this.editToggle.classList.remove('show');
+                    }, 400);
+                });
+                this.editToggle.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+                this.editToggle.addEventListener('mouseleave', () => {
+                    hideTimeout = setTimeout(() => {
+                        if (!this.isActive) this.editToggle.classList.remove('show');
+                    }, 400);
+                });
+
+                this.editToggle.addEventListener('click', () => this.toggleEditMode());
+                hotzone.addEventListener('click', () => this.toggleEditMode());
+
+                document.addEventListener('keydown', (e) => {
+                    if ((e.key === 'e' || e.key === 'E') && e.target.getAttribute('contenteditable') !== 'true') {
+                        this.toggleEditMode();
+                    }
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                        e.preventDefault();
+                        this.saveToLocalStorage();
+                        this.showToast('Salvo no navegador (localStorage)');
+                    }
+                });
+            }
+
+            toggleEditMode() {
+                this.isActive = !this.isActive;
+                this.editToggle.classList.toggle('active', this.isActive);
+                this.editToggle.textContent = this.isActive ? 'EDITANDO [E]' : 'EDITAR [E]';
+
+                const elements = document.querySelectorAll(this.editableSelectors);
+                elements.forEach((el, idx) => {
+                    el.dataset.editId = `ed-${idx}`;
+                    if (this.isActive) {
+                        el.setAttribute('contenteditable', 'true');
+                        el.setAttribute('data-editable', 'true');
+                        el.oninput = () => this.saveToLocalStorage();
+                    } else {
+                        el.removeAttribute('contenteditable');
+                        el.removeAttribute('data-editable');
+                    }
+                });
+
+                if (!this.isActive) {
+                    this.saveToLocalStorage();
+                    this.showToast('Edição salva localmente');
+                }
+            }
+
+            saveToLocalStorage() {
+                const data = {};
+                document.querySelectorAll(this.editableSelectors).forEach((el, idx) => {
+                    data[`ed-${idx}`] = el.innerHTML;
+                });
+                try {
+                    localStorage.setItem(this.storageKey, JSON.stringify(data));
+                } catch (_) {}
+            }
+
+            restoreSaved() {
+                try {
+                    const raw = localStorage.getItem(this.storageKey);
+                    if (!raw) return;
+                    const data = JSON.parse(raw);
+                    document.querySelectorAll(this.editableSelectors).forEach((el, idx) => {
+                        if (data[`ed-${idx}`] !== undefined) {
+                            el.innerHTML = data[`ed-${idx}`];
+                        }
+                    });
+                } catch (_) {}
+            }
+
+            showToast(msg) {
+                this.toast.textContent = msg;
+                this.toast.classList.add('show');
+                setTimeout(() => this.toast.classList.remove('show'), 2200);
+            }
+        }
+
+        new SlidePresentation();
+        new InlineEditor();
+    </script>
+</body>
+</html>

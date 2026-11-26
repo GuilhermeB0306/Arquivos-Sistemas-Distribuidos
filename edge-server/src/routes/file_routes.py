@@ -4,26 +4,18 @@ from src.controllers.rest_controller import FileRestController
 from src.services.auth_service import JwtAuthService
 
 def create_file_routes(controller: FileRestController) -> APIRouter:
-    """
-    Camada Routes (Roteamento FastAPI protegido por JWT Stateless):
-    Todas as rotas exigem um Token JWT válido no header Authorization: Bearer <token>.
-    """
-    router = APIRouter(prefix="/api", tags=["2. Arquivos Distribuídos (Sharding + Load Balancer + gRPC)"])
+    # Rotas de upload, listagem e download protegidas por JWT
+    router = APIRouter(prefix="/api", tags=["2. Arquivos Distribuidos"])
 
     @router.post(
         "/upload",
         response_model=UploadResponseSchema,
         status_code=201,
-        summary="Upload de Arquivo Real (Divide ao meio entre Central-1 e Central-2)",
-        description=(
-            "**Requer Token JWT Stateless.**\n\n"
-            "Recebe o arquivo, **divide seus bytes exatamente ao meio (`part1` e `part2`)**, "
-            "usa o **Load Balancer (Round-Robin)** para distribuir uma metade para cada Servidor Central via **gRPC**, "
-            "e cada Servidor Central aguarda o **Token Ring** para salvar sua parte e registrar no **Banco de Metadados SQLite**!"
-        )
+        summary="Upload de arquivo",
+        description="Divide o arquivo ao meio, valida duplicidade via SHA-256 e salva nos servidores centrais."
     )
     async def upload_file(
-        file: UploadFile = File(..., description="Selecione qualquer arquivo para ser fatiado ao meio"),
+        file: UploadFile = File(..., description="Selecione o arquivo"),
         jwt_payload: dict = Depends(JwtAuthService.verify_token)
     ):
         current_user = jwt_payload.get("sub", "usuario-jwt")
@@ -33,11 +25,8 @@ def create_file_routes(controller: FileRestController) -> APIRouter:
         "/upload/json",
         response_model=UploadResponseSchema,
         status_code=201,
-        summary="Upload Rápido via JSON (Divide o texto ao meio entre Central-1 e Central-2)",
-        description=(
-            "**Requer Token JWT Stateless.**\n\n"
-            "Divide o texto enviado ao meio: a 1ª metade vai para um Servidor Central e a 2ª metade para o outro."
-        )
+        summary="Upload via JSON",
+        description="Divide o texto enviado ao meio entre os dois servidores centrais."
     )
     def upload_json(
         payload: UploadTextRequest,
@@ -49,25 +38,16 @@ def create_file_routes(controller: FileRestController) -> APIRouter:
     @router.get(
         "/files",
         response_model=FileListResponseSchema,
-        summary="Listar Banco de Metadados (Mapa de Chunks)",
-        description=(
-            "**Requer Token JWT Stateless.**\n\n"
-            "Consulta o Banco de Metadados mostrando todos os arquivos e em qual Servidor Central "
-            "está salva a **Parte 1** e a **Parte 2** de cada arquivo."
-        )
+        summary="Listar arquivos",
+        description="Lista os arquivos cadastrados e onde esta cada parte."
     )
     def list_files(jwt_payload: dict = Depends(JwtAuthService.verify_token)):
         return controller.list_files()
 
     @router.get(
         "/download/{filename}",
-        summary="Download de Arquivo (Busca as 2 metades via gRPC e remonta o original)",
-        description=(
-            "**Requer Token JWT Stateless.**\n\n"
-            "Consulta o Banco de Metadados para saber onde estão as partes do arquivo, "
-            "busca a **Parte 1** e a **Parte 2** nos respectivos Servidores Centrais via gRPC, "
-            "**remonta o arquivo completo** e faz o download!"
-        )
+        summary="Download de arquivo",
+        description="Busca as duas partes via gRPC e remonta o arquivo original."
     )
     def download_file(
         filename: str,

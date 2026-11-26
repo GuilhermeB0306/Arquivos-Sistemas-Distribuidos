@@ -12,16 +12,7 @@ from src.services.token_ring_service import TokenRingService
 logger = logging.getLogger("FileService")
 
 class FileManagementService:
-    """
-    Camada de Serviço (Regras de Negócio dos Servidores Centrais):
-    1. compute_chunk_sha256: Um Worker (Thread) deste Servidor Central calcula o hash SHA-256
-       dos 50% do arquivo que recebeu.
-    2. save_chunk: Exige posse do TOKEN (Token Ring) para:
-       - Verificar no Banco SQLite se a SOMA dos hashes (Parte 1 + Parte 2 -> combined_file_sha256)
-         já está cadastrada em um arquivo completo (Deduplicação Distribuída por Soma SHA-256);
-       - Se for duplicado (100% igual), rejeita a gravação sem duplicar no disco;
-       - Se for novo (ou se apenas 50% era igual), grava localmente, replica no Backup e salva no SQLite!
-    """
+    # Regras de negocio para calculo de hash, gravacao com Token Ring e leitura
     def __init__(
         self,
         repository: StorageRepository,
@@ -34,11 +25,11 @@ class FileManagementService:
         self.server_id = Config.SERVER_ID
 
     def compute_chunk_sha256(self, part_number: int, chunk_filename: str, content: bytes) -> dict:
-        """Worker Thread do Servidor Central que calcula o SHA-256 da sua metade (50%)."""
+        # Worker calcula o hash SHA-256 da metade recebida
         worker_name = threading.current_thread().name
         chunk_hash = hashlib.sha256(content).hexdigest()
         logger.info(
-            f"🔐 [{self.server_id} | Worker: {worker_name}] Calculou SHA-256 da Parte {part_number} "
+            f"[{self.server_id} | Worker: {worker_name}] Calculou SHA-256 da parte {part_number} "
             f"('{chunk_filename}'): {chunk_hash[:16]}..."
         )
         return {
@@ -60,19 +51,18 @@ class FileManagementService:
         chunk_sha256: str,
         combined_file_sha256: str
     ) -> dict:
-        op_desc = f"Validar SHA-256 + Gravar Parte {part_number}/{total_parts} ('{chunk_filename}')"
+        op_desc = f"Parte {part_number}/{total_parts} ('{chunk_filename}')"
         self.token_ring.enter_critical_section(op_desc)
         try:
-            # Se o hash individual não veio preenchido, o worker calcula na hora
             if not chunk_sha256:
                 chunk_sha256 = hashlib.sha256(content).hexdigest()
 
-            # 1. VALIDAÇÃO DE DUPLICIDADE PELA SOMA DOS HASHES (Parte 1 + Parte 2) DENTRO DA REGIÃO CRÍTICA
+            # Verifica se a soma dos hashes ja existe no banco
             existing_file = self.repository.find_duplicate_by_combined_hash(combined_file_sha256)
             if existing_file is not None:
                 logger.warning(
-                    f"🚫 [{self.server_id} | Deduplicação SHA-256] Upload de '{original_filename}' BLOQUEADO! "
-                    f"A soma dos hashes das 2 partes ({combined_file_sha256[:16]}...) já existe no arquivo '{existing_file}'!"
+                    f"[{self.server_id}] Upload de '{original_filename}' bloqueado por duplicidade. "
+                    f"Hash composto ja existe em '{existing_file}'"
                 )
                 return {
                     "success": False,
@@ -84,14 +74,14 @@ class FileManagementService:
                     "chunk_sha256": chunk_sha256,
                     "combined_file_sha256": combined_file_sha256,
                     "message": (
-                        f"Duplicidade detectada via SHA-256! A soma das partes deste arquivo é idêntica "
-                        f"ao arquivo '{existing_file}' já armazenado."
+                        f"Duplicidade detectada via SHA-256. O arquivo enviado e identico "
+                        f"ao arquivo '{existing_file}' ja armazenado."
                     )
                 }
 
             time.sleep(0.6)
 
-            # 2. Replica a fatia via gRPC para o Container de Redundância (server-backup)
+            # Envia copia para o servidor de backup
             backup_res = self.backup_client.replicate_chunk(
                 original_filename=original_filename,
                 part_number=part_number,
@@ -100,7 +90,7 @@ class FileManagementService:
                 content=content
             )
 
-            # 3. Salva na pasta local deste Servidor Central e registra no Banco SQLite
+            # Salva localmente e atualiza o banco SQLite
             saved_path = self.repository.save_chunk_and_register(
                 original_filename=original_filename,
                 part_number=part_number,
@@ -115,8 +105,8 @@ class FileManagementService:
                 combined_file_sha256=combined_file_sha256
             )
             logger.info(
-                f"✅ [{self.server_id}] Parte {part_number}/{total_parts} validada (SHA-256 OK), "
-                f"salva em '{saved_path}' e replicada em '{backup_res['backup_saved_path']}'!"
+                f"[{self.server_id}] Parte {part_number}/{total_parts} salva em '{saved_path}' "
+                f"e replicada em '{backup_res['backup_saved_path']}'"
             )
             return {
                 "success": True,
@@ -127,19 +117,19 @@ class FileManagementService:
                 "replicated": backup_res["replicated"],
                 "chunk_sha256": chunk_sha256,
                 "combined_file_sha256": combined_file_sha256,
-                "message": f"Parte {part_number}/{total_parts} validada via SHA-256, salva e replicada com posse do Token!"
+                "message": f"Parte {part_number}/{total_parts} salva e replicada com sucesso."
             }
         finally:
             self.token_ring.exit_critical_section(op_desc)
 
     def get_chunk(self, chunk_filename: str) -> Optional[bytes]:
-        logger.info(f"📥 [{self.server_id}] Lendo fatia local '{chunk_filename}' (Leitura Livre)")
+        logger.info(f"[{self.server_id}] Lendo fatia local '{chunk_filename}'")
         return self.repository.read_local_chunk(chunk_filename)
 
     def get_file_map(self, original_filename: str) -> Optional[FileRecord]:
-        logger.info(f"🗺️ [{self.server_id}] Consultando Mapa de Chunks no Banco para '{original_filename}'")
+        logger.info(f"[{self.server_id}] Consultando mapa de chunks para '{original_filename}'")
         return self.repository.get_file_map(original_filename)
 
     def list_files(self) -> List[FileRecord]:
-        logger.info(f"📋 [{self.server_id}] Consultando catálogo completo de arquivos fatiados")
+        logger.info(f"[{self.server_id}] Listando catalogo de arquivos")
         return self.repository.list_all_files()

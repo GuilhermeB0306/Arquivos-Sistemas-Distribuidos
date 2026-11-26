@@ -9,11 +9,7 @@ import storage_pb2_grpc
 logger = logging.getLogger("TokenRing")
 
 class TokenRingService:
-    """
-    Camada de Serviço: Gerencia o algoritmo de Exclusão Mútua Distribuída (Token Ring)
-    com Tolerância a Falhas (Self-Healing):
-    Se o nó vizinho cair, este servidor mantém o Token operacional até o vizinho voltar!
-    """
+    # Controle do Token Ring para exclusao mutua na escrita
     def __init__(self):
         self.server_id = Config.SERVER_ID
         self.next_node = Config.NEXT_NODE_ADDRESS
@@ -29,7 +25,7 @@ class TokenRingService:
         worker_thread.start()
 
         if Config.INITIAL_TOKEN_HOLDER:
-            logger.info(f"[{self.server_id}] Configurado como detentor inicial do TOKEN. Aguardando anel subir...")
+            logger.info(f"[{self.server_id}] Inicia com o TOKEN. Aguardando servidores...")
             time.sleep(4)
             self.receive_token(sequence_number=1, from_server="BOOTSTRAP")
 
@@ -39,28 +35,28 @@ class TokenRingService:
             self.token_sequence = sequence_number
             if self.waiting_writers > 0:
                 logger.info(
-                    f"🟢 [{self.server_id}] TOKEN #{sequence_number} recebido de {from_server}! "
-                    f"Há {self.waiting_writers} escrita(s) aguardando na fila!"
+                    f"[{self.server_id}] TOKEN #{sequence_number} recebido de {from_server}. "
+                    f"Escritas na fila: {self.waiting_writers}"
                 )
             else:
-                logger.info(f"🔄 [{self.server_id}] TOKEN #{sequence_number} recebido de {from_server} (fila vazia).")
+                logger.info(f"[{self.server_id}] TOKEN #{sequence_number} recebido de {from_server} (fila vazia)")
             self.condition.notify_all()
 
     def enter_critical_section(self, operation_desc: str):
         with self.condition:
             self.waiting_writers += 1
-            logger.info(f"⏳ [{self.server_id}] Pedido de escrita ({operation_desc}). Aguardando TOKEN...")
+            logger.info(f"[{self.server_id}] Pedido de escrita ({operation_desc}). Aguardando TOKEN...")
             while not self.has_token or self.in_critical_section:
                 self.condition.wait()
 
             self.waiting_writers -= 1
             self.in_critical_section = True
-            logger.info(f"🔒 [{self.server_id}] ENTROU NA REGIÃO CRÍTICA ({operation_desc}) com TOKEN #{self.token_sequence}")
+            logger.info(f"[{self.server_id}] Entrou na regiao critica ({operation_desc}) com TOKEN #{self.token_sequence}")
 
     def exit_critical_section(self, operation_desc: str):
         with self.condition:
             self.in_critical_section = False
-            logger.info(f"🔓 [{self.server_id}] SAIU DA REGIÃO CRÍTICA ({operation_desc})")
+            logger.info(f"[{self.server_id}] Saiu da regiao critica ({operation_desc})")
             self.condition.notify_all()
 
     def _token_circulation_loop(self):
@@ -81,7 +77,6 @@ class TokenRingService:
                         if self._send_token_to_next_node(seq_to_pass):
                             self.has_token = False
                         else:
-                            # Se o vizinho caiu, mantém o token consigo e acorda eventuais escritores locais
                             self.condition.notify_all()
                     else:
                         continue
@@ -102,7 +97,7 @@ class TokenRingService:
                 return response.received
         except grpc.RpcError:
             logger.warning(
-                f"⚠️ [{self.server_id}] Vizinho ({self.next_node}) offline! Mantendo TOKEN localmente até o nó retornar..."
+                f"[{self.server_id}] Vizinho ({self.next_node}) offline. Mantendo TOKEN localmente..."
             )
             time.sleep(1.5)
             return False

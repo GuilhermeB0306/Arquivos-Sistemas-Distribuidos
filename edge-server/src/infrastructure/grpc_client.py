@@ -6,11 +6,7 @@ import storage_pb2_grpc
 logger = logging.getLogger("GrpcClient")
 
 class CentralGrpcClient:
-    """
-    Camada de Infraestrutura do Servidor de Borda:
-    Realiza chamadas gRPC aos Servidores Centrais (cálculo distribuído de SHA-256 nos workers,
-    gravação/leitura de chunks) e ao Servidor de Redundância (server-backup).
-    """
+    # Cliente gRPC para comunicacao com os servidores centrais e de backup
     GRPC_OPTIONS = [
         ("grpc.max_send_message_length", 200 * 1024 * 1024),
         ("grpc.max_receive_message_length", 200 * 1024 * 1024),
@@ -24,7 +20,7 @@ class CentralGrpcClient:
         content: bytes
     ) -> dict:
         logger.info(
-            f"🔐 [gRPC -> {target_server}] Solicitando a um Worker o cálculo SHA-256 da Parte {part_number} ('{chunk_filename}')"
+            f"[gRPC -> {target_server}] Calculando SHA-256 da parte {part_number} ('{chunk_filename}')"
         )
         with grpc.insecure_channel(target_server, options=self.GRPC_OPTIONS) as channel:
             stub = storage_pb2_grpc.FileServiceStub(channel)
@@ -58,8 +54,8 @@ class CentralGrpcClient:
         combined_file_sha256: str
     ) -> dict:
         logger.info(
-            f"📤 [gRPC -> {target_server}] Enviando Parte {part_number}/{total_parts} "
-            f"('{chunk_filename}', {len(content)} bytes) do usuário '{client_id}'"
+            f"[gRPC -> {target_server}] Enviando parte {part_number}/{total_parts} "
+            f"('{chunk_filename}', {len(content)} bytes) do usuario '{client_id}'"
         )
         with grpc.insecure_channel(target_server, options=self.GRPC_OPTIONS) as channel:
             stub = storage_pb2_grpc.FileServiceStub(channel)
@@ -95,7 +91,7 @@ class CentralGrpcClient:
             }
 
     def get_chunk(self, target_server: str, chunk_filename: str) -> dict:
-        logger.info(f"📥 [gRPC -> {target_server}] Buscando fatia '{chunk_filename}'")
+        logger.info(f"[gRPC -> {target_server}] Buscando fatia '{chunk_filename}'")
         with grpc.insecure_channel(target_server, options=self.GRPC_OPTIONS) as channel:
             stub = storage_pb2_grpc.FileServiceStub(channel)
             response = stub.GetChunk(
@@ -111,7 +107,7 @@ class CentralGrpcClient:
             }
 
     def get_file_map(self, target_server: str, original_filename: str) -> dict:
-        logger.info(f"🗺️ [gRPC -> {target_server}] Consultando Banco de Metadados para '{original_filename}'")
+        logger.info(f"[gRPC -> {target_server}] Consultando metadados de '{original_filename}'")
         with grpc.insecure_channel(target_server, options=self.GRPC_OPTIONS) as channel:
             stub = storage_pb2_grpc.FileServiceStub(channel)
             response = stub.GetFileMap(
@@ -148,7 +144,7 @@ class CentralGrpcClient:
             }
 
     def list_files(self, target_server: str) -> dict:
-        logger.info(f"📋 [gRPC -> {target_server}] Consultando catálogo de arquivos e chunks")
+        logger.info(f"[gRPC -> {target_server}] Consultando lista de arquivos")
         with grpc.insecure_channel(target_server, options=self.GRPC_OPTIONS) as channel:
             stub = storage_pb2_grpc.FileServiceStub(channel)
             response = stub.ListFiles(storage_pb2.Empty(), timeout=8.0)

@@ -9,19 +9,7 @@ from src.services.load_balancer_service import RoundRobinLoadBalancer
 logger = logging.getLogger("EdgeGateway")
 
 class EdgeGatewayService:
-    """
-    Camada de Serviço (Gateway + Fatiamento + Validação Distribuída SHA-256 + Failover):
-    1. No UPLOAD:
-       - Etapa A (Cálculo Distribuído de SHA-256 nos Workers):
-         Divide o arquivo ao meio (Parte 1 e Parte 2) e envia em paralelo para os Workers
-         dos 2 Servidores Centrais calcularem o SHA-256 de cada metade (`ComputeChunkHash`).
-       - Etapa B (Soma dos Hashes):
-         Combina o SHA-256 da Parte 1 + SHA-256 da Parte 2 gerando o `combined_file_sha256`.
-         Assim, se um arquivo novo tiver apenas 50% igual a outro, a soma será diferente e NÃO dará falso positivo!
-       - Etapa C (Validação na Região Crítica com Token Ring + Gravação e Replicação):
-         Envia as duas metades com o hash composto para os Servidores Centrais. Dentro do Token Ring,
-         eles verificam se a soma dos hashes já existe no banco SQLite. Se já existir, bloqueia a duplicata!
-    """
+    # Divide o arquivo ao meio, coordena o calculo do SHA-256 e faz failover no download
     def __init__(self, load_balancer: RoundRobinLoadBalancer, grpc_client: CentralGrpcClient):
         self.load_balancer = load_balancer
         self.grpc_client = grpc_client
@@ -40,17 +28,17 @@ class EdgeGatewayService:
         ]
 
         logger.info(
-            f"✂️ [Sharding] Arquivo '{filename}' ({original_size} bytes) dividido ao meio: "
+            f"[Sharding] Arquivo '{filename}' ({original_size} bytes) dividido em "
             f"Parte 1 ({len(part1_bytes)}B) e Parte 2 ({len(part2_bytes)}B)"
         )
 
-        # Seleciona os servidores via Load Balancer (Round-Robin)
+        # Escolhe os servidores via Round-Robin
         tasks = []
         for part_num, chunk_name, chunk_bytes in chunks_to_send:
             target_server = self.load_balancer.get_next_server(f"UPLOAD {chunk_name}")
             tasks.append((target_server, part_num, chunk_name, chunk_bytes))
 
-        # ETAPA 1: Cálculo Distribuído do SHA-256 nos Workers de cada Servidor Central em paralelo
+        # Pede aos workers dos servidores centrais o SHA-256 de cada metade
         hash_results = {}
         with futures.ThreadPoolExecutor(max_workers=2) as executor:
             future_to_part = {
@@ -70,17 +58,17 @@ class EdgeGatewayService:
         part1_hash = hash_results[1]["chunk_sha256"]
         part2_hash = hash_results[2]["chunk_sha256"]
 
-        # ETAPA 2: Soma dos Hashes (Hash Composto da Parte 1 + Parte 2)
+        # Gera o hash composto pela soma dos dois hashes
         combined_raw = f"{part1_hash}:{part2_hash}".encode("utf-8")
         combined_file_sha256 = hashlib.sha256(combined_raw).hexdigest()
 
         logger.info(
-            f"🔗 [Soma SHA-256] Hash Parte 1 ({hash_results[1]['calculated_by_server']}): {part1_hash[:12]}... + "
-            f"Hash Parte 2 ({hash_results[2]['calculated_by_server']}): {part2_hash[:12]}... "
-            f"=> Hash Composto Final: {combined_file_sha256[:16]}..."
+            f"[Soma SHA-256] Parte 1 ({hash_results[1]['calculated_by_server']}): {part1_hash[:12]}... + "
+            f"Parte 2 ({hash_results[2]['calculated_by_server']}): {part2_hash[:12]}... "
+            f"-> Hash final: {combined_file_sha256[:16]}..."
         )
 
-        # ETAPA 3: Validação de Duplicidade na Região Crítica (Token Ring), Gravação e Replicação
+        # Envia as duas partes para gravacao nos servidores centrais
         chunk_results = []
         with futures.ThreadPoolExecutor(max_workers=2) as executor:
             future_to_part = {
@@ -104,12 +92,11 @@ class EdgeGatewayService:
 
         chunk_results.sort(key=lambda x: x["part_number"])
 
-        # Adiciona metadados de qual worker thread calculou o hash de cada metade
         for c in chunk_results:
             p = c["part_number"]
             c["hash_worker_info"] = f"{hash_results[p]['calculated_by_server']} ({hash_results[p]['worker_thread']})"
 
-        # Verifica se os Servidores Centrais detectaram duplicidade pela soma dos hashes SHA-256
+        # Verifica se houve bloqueio por duplicidade
         duplicate_detected = any(c["is_duplicate"] for c in chunk_results)
         if duplicate_detected:
             dup_of = next((c["duplicate_of_filename"] for c in chunk_results if c["duplicate_of_filename"]), "existente")
@@ -123,8 +110,8 @@ class EdgeGatewayService:
                 "uploaded_by": client_id,
                 "combined_file_sha256": combined_file_sha256,
                 "message": (
-                    f"🚫 Upload bloqueado por Duplicidade (SHA-256)! A soma das 2 metades deste arquivo "
-                    f"é 100% idêntica ao arquivo '{dup_of}' já salvo nos servidores."
+                    f"Upload bloqueado por duplicidade (SHA-256). O arquivo enviado "
+                    f"e identico ao arquivo '{dup_of}' ja salvo."
                 ),
                 "chunks": chunk_results
             }
@@ -138,10 +125,7 @@ class EdgeGatewayService:
             "total_parts": 2,
             "uploaded_by": client_id,
             "combined_file_sha256": combined_file_sha256,
-            "message": (
-                "Arquivo validado via Soma SHA-256 nos Workers (não duplicado), dividido ao meio, "
-                "salvo nos 2 Servidores Centrais com Token Ring e replicado no Server-Backup!"
-            ),
+            "message": "Arquivo validado, dividido em duas partes, salvo nos servidores centrais e replicado no backup.",
             "chunks": chunk_results
         }
 
@@ -151,7 +135,7 @@ class EdgeGatewayService:
             return self.grpc_client.get_file_map(target_server=primary, original_filename=filename)
         except grpc.RpcError:
             logger.warning(
-                f"⚠️ [Failover Metadados] Servidor {primary} offline! Consultando Mapa no Backup ({self.backup_server})..."
+                f"[Failover] Servidor {primary} offline. Consultando metadados no backup ({self.backup_server})..."
             )
             return self.grpc_client.get_file_map(target_server=self.backup_server, original_filename=filename)
 
@@ -162,7 +146,7 @@ class EdgeGatewayService:
             return {
                 "found": False,
                 "filename": filename,
-                "message": f"Arquivo '{filename}' não encontrado no Banco de Metadados.",
+                "message": f"Arquivo '{filename}' nao encontrado.",
                 "handled_by_central": file_map.get("handled_by_central", "unknown")
             }
 
@@ -179,27 +163,27 @@ class EdgeGatewayService:
             try:
                 chunk_resp = self.grpc_client.get_chunk(target_server=primary_addr, chunk_filename=chunk_name)
                 if not chunk_resp["found"]:
-                    raise RuntimeError(f"Chunk ausente no primário {primary_addr}")
+                    raise RuntimeError(f"Chunk ausente em {primary_addr}")
                 reassembled.extend(chunk_resp["content"])
                 fetched_from.append(f"Parte {part_num} de {chunk['server_id']}")
             except Exception:
                 logger.warning(
-                    f"🚑 [FAILOVER] Servidor primário [{primary_addr}] indisponível para '{chunk_name}'! "
-                    f"Recuperando cópia redundante em [{backup_addr}]..."
+                    f"[Failover] Servidor [{primary_addr}] indisponivel para '{chunk_name}'. "
+                    f"Buscando copia no backup [{backup_addr}]..."
                 )
                 backup_resp = self.grpc_client.get_chunk(target_server=backup_addr, chunk_filename=chunk_name)
                 if not backup_resp["found"]:
                     return {
                         "found": False,
                         "filename": filename,
-                        "message": f"Fatia '{chunk_name}' indisponível tanto no primário quanto no backup!",
+                        "message": f"Fatia '{chunk_name}' indisponivel no servidor primario e no backup.",
                         "handled_by_central": backup_addr
                     }
                 reassembled.extend(backup_resp["content"])
                 fetched_from.append(f"Parte {part_num} de {backup_resp['handled_by_central']}")
 
         logger.info(
-            f"🧩 [Reassembly] Arquivo '{filename}' ({len(reassembled)} bytes) remontado com sucesso! ({', '.join(fetched_from)})"
+            f"[Reassembly] Arquivo '{filename}' ({len(reassembled)} bytes) remontado ({', '.join(fetched_from)})"
         )
 
         return {
@@ -207,7 +191,7 @@ class EdgeGatewayService:
             "filename": filename,
             "content": bytes(reassembled),
             "handled_by_central": " + ".join(fetched_from),
-            "message": "Arquivo remontado com sucesso (Tolerante a Falhas)."
+            "message": "Arquivo remontado com sucesso."
         }
 
     def handle_list_files(self) -> dict:
@@ -216,6 +200,6 @@ class EdgeGatewayService:
             return self.grpc_client.list_files(target_server=target_server)
         except grpc.RpcError:
             logger.warning(
-                f"⚠️ [Failover Listagem] Servidor {target_server} offline! Listando via Backup ({self.backup_server})..."
+                f"[Failover] Servidor {target_server} offline. Listando via backup ({self.backup_server})..."
             )
             return self.grpc_client.list_files(target_server=self.backup_server)

@@ -18,11 +18,9 @@ logging.basicConfig(
 logger = logging.getLogger("Main")
 
 def serve():
-    # 1. Inicializa a camada de Infraestrutura (Repositório Local + Cliente gRPC de Backup)
     repository = StorageRepository()
     backup_client = BackupGrpcClient()
 
-    # 2. Inicializa a camada de Serviços (Token Ring + Regras de Negócio com Replicação)
     token_ring_service = TokenRingService()
     file_service = FileManagementService(
         repository=repository,
@@ -30,8 +28,8 @@ def serve():
         backup_client=backup_client
     )
 
-    # 3. Configura o Servidor gRPC com Pool de Threads (Concorrência) e limite de 200MB por mensagem
-    MAX_MESSAGE_LENGTH = 200 * 1024 * 1024  # 200 MB
+    # Servidor gRPC com 10 threads e limite de 200MB por mensagem
+    MAX_MESSAGE_LENGTH = 200 * 1024 * 1024
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
         options=[
@@ -51,16 +49,14 @@ def serve():
     server.add_insecure_port(address)
     server.start()
 
-    logger.info("==========================================================")
-    logger.info(f"🚀 Servidor Central [{Config.SERVER_ID}] iniciado na porta gRPC {Config.GRPC_PORT}")
-    logger.info(f"🔗 Próximo nó no Token Ring: {Config.NEXT_NODE_ADDRESS}")
-    logger.info(f"🛡️ Servidor de Redundância (Backup): {Config.BACKUP_SERVER_ADDRESS}")
-    logger.info(f"📂 Diretório Local de Chunks: {Config.NODE_STORAGE_DIR}")
-    logger.info("==========================================================")
+    logger.info("----------------------------------------------------------")
+    logger.info(f"Servidor Central [{Config.SERVER_ID}] iniciado na porta {Config.GRPC_PORT}")
+    logger.info(f"Proximo no do anel: {Config.NEXT_NODE_ADDRESS}")
+    logger.info(f"Servidor de backup: {Config.BACKUP_SERVER_ADDRESS}")
+    logger.info(f"Pasta local: {Config.NODE_STORAGE_DIR}")
+    logger.info("----------------------------------------------------------")
 
-    # 4. Inicia a Thread dedicada à circulação do Token Ring
     token_ring_service.start_background_worker()
-
     server.wait_for_termination()
 
 if __name__ == "__main__":

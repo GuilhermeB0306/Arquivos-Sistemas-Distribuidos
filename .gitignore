@@ -1,0 +1,36 @@
+# Relatorio LaTeX e arquivos gerados por ele
+relatorio.tex
+*.aux
+*.log
+*.out
+*.toc
+*.pdf
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Arquivos de upload, banco SQLite e catalogo gerados em execucao
+storage_data/
+*.db
+*.sqlite
+*.sqlite3
+*.part1
+*.part2
+
+# Cache do Python e ambientes virtuais
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Arquivos gerados pelo gRPC localmente (caso compilados fora do Docker)
+*_pb2.py
+*_pb2_grpc.py
+
+# Configuracoes de IDE e Sistema Operacional
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

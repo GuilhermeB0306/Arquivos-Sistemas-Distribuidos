@@ -6,17 +6,13 @@ from src.schemas.file_schemas import UploadTextRequest, UploadResponseSchema, Fi
 from src.services.edge_gateway_service import EdgeGatewayService
 
 class FileRestController:
-    """
-    Camada Controller:
-    Recebe as requisições já autenticadas via JWT Stateless, repassa para o EdgeGatewayService
-    fatiar, validar duplicidade pela soma dos hashes SHA-256 nos workers e remontar arquivos.
-    """
+    # Controller REST para upload, listagem e download de arquivos
     def __init__(self, gateway_service: EdgeGatewayService):
         self.gateway_service = gateway_service
 
     async def upload_multipart_file(self, file: UploadFile, current_user: str):
         if not file.filename:
-            raise HTTPException(status_code=400, detail="O nome do arquivo é obrigatório.")
+            raise HTTPException(status_code=400, detail="O nome do arquivo e obrigatorio.")
         try:
             content = await file.read()
             result = self.gateway_service.handle_upload(
@@ -29,7 +25,7 @@ class FileRestController:
                 return JSONResponse(status_code=409, content=schema.model_dump())
             return schema
         except grpc.RpcError as e:
-            raise HTTPException(status_code=502, detail=f"Erro gRPC com Servidor Central: {e.details()}")
+            raise HTTPException(status_code=502, detail=f"Erro gRPC: {e.details()}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -46,7 +42,7 @@ class FileRestController:
                 return JSONResponse(status_code=409, content=schema.model_dump())
             return schema
         except grpc.RpcError as e:
-            raise HTTPException(status_code=502, detail=f"Erro gRPC com Servidor Central: {e.details()}")
+            raise HTTPException(status_code=502, detail=f"Erro gRPC: {e.details()}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -55,7 +51,7 @@ class FileRestController:
             result = self.gateway_service.handle_list_files()
             return FileListResponseSchema(**result)
         except grpc.RpcError as e:
-            raise HTTPException(status_code=502, detail=f"Erro gRPC com Servidor Central: {e.details()}")
+            raise HTTPException(status_code=502, detail=f"Erro gRPC: {e.details()}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -83,6 +79,6 @@ class FileRestController:
         except HTTPException:
             raise
         except grpc.RpcError as e:
-            raise HTTPException(status_code=502, detail=f"Erro gRPC com Servidor Central: {e.details()}")
+            raise HTTPException(status_code=502, detail=f"Erro gRPC: {e.details()}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))

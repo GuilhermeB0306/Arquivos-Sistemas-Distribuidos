@@ -5,13 +5,7 @@ from src.config.settings import Config
 from src.domain.models import BackupFileRecord, BackupChunkRecord
 
 class BackupRepository:
-    """
-    Camada de Infraestrutura do Servidor de Backup (Redundância):
-    - Armazena fisicamente as cópias redundantes de TODAS as fatias (part1 e part2)
-      em storage_data/server-backup/.
-    - Permite leitura de emergência (Failover) tanto das fatias quanto do Banco de Metadados
-      caso central-1 ou central-2 caiam.
-    """
+    # Armazena e recupera as copias de backup das fatias
     def __init__(self):
         os.makedirs(Config.STORAGE_DIR, exist_ok=True)
         os.makedirs(Config.BACKUP_STORAGE_DIR, exist_ok=True)

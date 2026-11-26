@@ -5,15 +5,12 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from src.config.settings import Config
 
 security_scheme = HTTPBearer(
-    scheme_name="JWT Stateless Auth",
-    description="Cole aqui o Token JWT gerado na rota **/api/auth/login**"
+    scheme_name="JWT Auth",
+    description="Cole aqui o Token JWT gerado na rota /api/auth/login"
 )
 
 class JwtAuthService:
-    """
-    Camada de Serviço (Autenticação Stateless):
-    Gera e valida tokens JWT assinados criptograficamente sem armazenar sessão em memória.
-    """
+    # Geracao e validacao de tokens JWT
     @staticmethod
     def create_access_token(username: str, role: str = "aluno_sd") -> dict:
         now = datetime.now(timezone.utc)
@@ -31,7 +28,7 @@ class JwtAuthService:
             "token_type": "Bearer",
             "expires_in_minutes": Config.JWT_EXPIRATION_MINUTES,
             "username": username,
-            "stateless_note": "O servidor não guarda sessão! Sua identidade viaja assinada dentro deste JWT."
+            "stateless_note": "Autenticacao stateless via JWT."
         }
 
     @staticmethod
@@ -47,10 +44,10 @@ class JwtAuthService:
         except jwt.ExpiredSignatureError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token JWT expirado. Faça login novamente em /api/auth/login."
+                detail="Token JWT expirado. Faca login novamente."
             )
         except jwt.InvalidTokenError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token JWT inválido."
+                detail="Token JWT invalido."
             )

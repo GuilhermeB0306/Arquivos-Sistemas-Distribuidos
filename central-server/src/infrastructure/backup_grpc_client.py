@@ -7,11 +7,7 @@ from src.config.settings import Config
 logger = logging.getLogger("BackupClient")
 
 class BackupGrpcClient:
-    """
-    Camada de Infraestrutura do Servidor Central:
-    Envia uma cópia redundante da fatia (chunk) via gRPC para o container 'server-backup'
-    enquanto o Servidor Central está dentro da Região Crítica (com o Token).
-    """
+    # Cliente gRPC para enviar copia da fatia ao servidor de backup
     def __init__(self):
         self.backup_address = Config.BACKUP_SERVER_ADDRESS
         self.server_id = Config.SERVER_ID
@@ -43,8 +39,8 @@ class BackupGrpcClient:
                     timeout=15.0
                 )
                 logger.info(
-                    f"🛡️ [{self.server_id} -> {self.backup_address}] Cópia de redundância da Parte {part_number} "
-                    f"('{chunk_filename}') replicada em '{response.backup_saved_path}'!"
+                    f"[{self.server_id} -> {self.backup_address}] Copia da parte {part_number} "
+                    f"('{chunk_filename}') salva no backup em '{response.backup_saved_path}'"
                 )
                 return {
                     "replicated": response.success,
@@ -53,7 +49,7 @@ class BackupGrpcClient:
                 }
         except grpc.RpcError as e:
             logger.warning(
-                f"⚠️ [{self.server_id}] Não foi possível replicar '{chunk_filename}' para {self.backup_address}: {e.details()}"
+                f"[{self.server_id}] Falha ao replicar '{chunk_filename}' para {self.backup_address}: {e.details()}"
             )
             return {
                 "replicated": False,

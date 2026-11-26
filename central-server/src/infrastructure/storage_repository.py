@@ -7,13 +7,7 @@ from src.config.settings import Config
 from src.domain.models import FileRecord, ChunkRecord
 
 class StorageRepository:
-    """
-    Camada de Infraestrutura:
-    1. Verifica no Banco SQLite se a SOMA dos hashes SHA-256 (combined_file_sha256)
-       já existe pertencendo a outro arquivo (Validação de Duplicidade Distribuída).
-    2. Salva a metade (chunk) na pasta exclusiva deste Servidor Central e registra
-       o hash individual da fatia (chunk_sha256) e o hash composto (combined_file_sha256).
-    """
+    # Gerencia a gravacao das fatias em disco e os registros no banco SQLite
     def __init__(self):
         os.makedirs(Config.STORAGE_DIR, exist_ok=True)
         os.makedirs(Config.NODE_STORAGE_DIR, exist_ok=True)
@@ -50,7 +44,6 @@ class StorageRepository:
                     PRIMARY KEY (filename, part_number)
                 )
             """)
-            # Migração automática caso o banco SQLite já exista de testes anteriores
             cursor.execute("PRAGMA table_info(files)")
             file_cols = {row[1] for row in cursor.fetchall()}
             if "combined_file_sha256" not in file_cols:
@@ -67,11 +60,7 @@ class StorageRepository:
             conn.commit()
 
     def find_duplicate_by_combined_hash(self, combined_file_sha256: str) -> Optional[str]:
-        """
-        Verifica no Banco de Metadados se JÁ EXISTE um arquivo completo (com as 2 partes salvas)
-        cujo hash composto (SHA-256 da Parte 1 + Parte 2) seja idêntico.
-        Se apenas 50% (uma parte) for igual, o combined_file_sha256 será diferente e NÃO acusará duplicata!
-        """
+        # Verifica se a soma dos hashes SHA-256 das duas partes ja existe no banco
         if not combined_file_sha256:
             return None
         with self._get_connection() as conn:
@@ -100,7 +89,7 @@ class StorageRepository:
         chunk_sha256: str,
         combined_file_sha256: str
     ) -> str:
-        # 1. Salva a fatia física na pasta exclusiva deste nó primário
+        # Salva a fatia na pasta deste servidor
         local_chunk_path = os.path.join(Config.NODE_STORAGE_DIR, chunk_filename)
         with open(local_chunk_path, "wb") as f:
             f.write(content)
@@ -108,7 +97,7 @@ class StorageRepository:
         relative_visual_path = f"storage_data/{Config.SERVER_ID}/{chunk_filename}"
         now_str = datetime.now().isoformat(timespec="seconds")
 
-        # 2. Registra no Banco SQLite os metadados + o SHA-256 individual e composto
+        # Registra os dados da fatia no SQLite
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""

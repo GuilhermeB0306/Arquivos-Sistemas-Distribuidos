@@ -5,11 +5,7 @@ from src.domain.models import BackupFileRecord
 from src.services.backup_service import BackupReplicationService
 
 class BackupGrpcController(storage_pb2_grpc.FileServiceServicer):
-    """
-    Camada Controller (gRPC) do Servidor de Redundância (server-backup):
-    Atende chamadas de replicação (vindas de central-1 e central-2)
-    e chamadas de recuperação/Failover (vindas do edge-server).
-    """
+    # Controller gRPC do servidor de backup
     def __init__(self, backup_service: BackupReplicationService):
         self.backup_service = backup_service
         self.server_id = Config.SERVER_ID
@@ -52,7 +48,7 @@ class BackupGrpcController(storage_pb2_grpc.FileServiceServicer):
             success=True,
             backup_server_id=self.server_id,
             backup_saved_path=backup_path,
-            message=f"Cópia redundante salva com sucesso em {self.server_id}"
+            message=f"Copia salva em {self.server_id}"
         )
 
     def GetChunk(self, request, context):
@@ -63,14 +59,14 @@ class BackupGrpcController(storage_pb2_grpc.FileServiceServicer):
                 chunk_filename=request.chunk_filename,
                 content=b"",
                 handled_by=self.server_id,
-                message=f"Fatia '{request.chunk_filename}' não encontrada no servidor de redundância."
+                message=f"Fatia '{request.chunk_filename}' nao encontrada no backup."
             )
         return storage_pb2.ChunkDownloadResponse(
             found=True,
             chunk_filename=request.chunk_filename,
             content=content,
             handled_by=f"{self.server_id} (FAILOVER)",
-            message="Fatia recuperada com sucesso do Servidor de Redundância!"
+            message="Fatia recuperada do servidor de backup."
         )
 
     def GetFileMap(self, request, context):

@@ -19,7 +19,7 @@ def serve():
     repository = BackupRepository()
     backup_service = BackupReplicationService(repository=repository)
 
-    MAX_MESSAGE_LENGTH = 200 * 1024 * 1024  # 200 MB
+    MAX_MESSAGE_LENGTH = 200 * 1024 * 1024
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
         options=[
@@ -35,10 +35,10 @@ def serve():
     server.add_insecure_port(address)
     server.start()
 
-    logger.info("==========================================================")
-    logger.info(f"🛡️ Servidor de Redundância [{Config.SERVER_ID}] iniciado na porta gRPC {Config.GRPC_PORT}")
-    logger.info(f"📂 Diretório de Backup: {Config.BACKUP_STORAGE_DIR}")
-    logger.info("==========================================================")
+    logger.info("----------------------------------------------------------")
+    logger.info(f"Servidor de Backup [{Config.SERVER_ID}] iniciado na porta {Config.GRPC_PORT}")
+    logger.info(f"Pasta de backup: {Config.BACKUP_STORAGE_DIR}")
+    logger.info("----------------------------------------------------------")
 
     server.wait_for_termination()
 
